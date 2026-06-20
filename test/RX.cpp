@@ -12,7 +12,7 @@ void setup() {
   radio.setDataRate(RF24_250KBPS);
   radio.setChannel(102);
   radio.startListening();
-  Serial.println("RX Siap, menunggu pesan...");
+  Serial.println("CLient Siap, menunggu pesan...");
 }
 
 void loop() {
