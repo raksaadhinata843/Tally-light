@@ -1,28 +1,26 @@
-#include <SPI.h>
-#include <RF24.h>
+#include <esp_now.h>
+#include <WiFi.h>
 
-RF24 radio(4, 5); // CE, CSN
-const byte address[6] = "TALLY";
+// Replace these with the actual MAC addresses of your 4 TX boards
+uint8_t txAddresses[][6] = {
+  {0x24, 0x6F, 0x28, 0xAA, 0xAA, 0xAA}, // TX 1
+  {0x24, 0x6F, 0x28, 0xBB, 0xBB, 0xBB}, // TX 2
+  {0x24, 0x6F, 0x28, 0xCC, 0xCC, 0xCC}, // TX 3
+  {0x24, 0x6F, 0x28, 0xDD, 0xDD, 0xDD}  // TX 4
+};
+
+const int ledPin = 5;
+
+void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+  bool isLive = *incomingData;
+  digitalWrite(ledPin, isLive ? HIGH : LOW);
+}
 
 void setup() {
-  Serial.begin(9600);
-  radio.begin();
-  radio.openWritingPipe(address);
-  radio.setPALevel(RF24_PA_LOW);
-  radio.setDataRate(RF24_250KBPS);
-  radio.setChannel(102);
-  radio.stopListening();
-  Serial.println("Master Siap, mencoba mengirim...");
+  pinMode(ledPin, OUTPUT);
+  WiFi.mode(WIFI_STA);
+  esp_now_init();
+  esp_now_register_recv_cb(OnDataRecv);
 }
 
-void loop() {
-  const char text[] = "Tally On";
-  bool ok = radio.write(&text, sizeof(text));
-  
-  if (ok) {
-    Serial.println("Pesan terkirim sukses!");
-  } else {
-    Serial.println("Gagal kirim (Cek kabel/koneksi NRF)");
-  }
-  delay(1000);
-}
+void loop() {}

@@ -1,25 +1,22 @@
-#include <SPI.h>
-#include <RF24.h>
+#include <esp_now.h>
+#include <WiFi.h>
 
-RF24 radio(4, 5); // CE, CSN
-const byte address[6] = "TALLY";
+// Replace with the MAC address of the RX Tally Light board
+uint8_t receiverAddress[] = {0x24, 0x6F, 0x28, 0xEE, 0xEE, 0xEE}; 
+const int tallyPin = 2; // Connected to AVMATRIX GPIO
 
 void setup() {
-  Serial.begin(9600);
-  radio.begin();
-  radio.openReadingPipe(0, address);
-  radio.setPALevel(RF24_PA_LOW);
-  radio.setDataRate(RF24_250KBPS);
-  radio.setChannel(102);
-  radio.startListening();
-  Serial.println("CLient Siap, menunggu pesan...");
+  pinMode(tallyPin, INPUT_PULLUP);
+  WiFi.mode(WIFI_STA);
+  esp_now_init();
+  
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(peerInfo.peer_addr, receiverAddress, 6);
+  esp_now_add_peer(&peerInfo);
 }
 
 void loop() {
-  if (radio.available()) {
-    char text[32];
-    radio.read(&text, sizeof(text));
-    Serial.print("Pesan diterima: ");
-    Serial.println(text);
-  }
+  bool isLive = (digitalRead(tallyPin) == LOW);
+  esp_now_send(receiverAddress, (uint8_t *) &isLive, sizeof(isLive));
+  delay(100); 
 }
