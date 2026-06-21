@@ -2,7 +2,7 @@
 #include <WiFi.h>
 
 // Replace with the MAC address of the RX Tally Light board
-uint8_t receiverAddress[] = {0x24, 0x6F, 0x28, 0xEE, 0xEE, 0xEE}; 
+uint8_t receiverAddress[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00}; 
 const int tallyPin = 2; // Connected to AVMATRIX GPIO
 
 void setup() {
