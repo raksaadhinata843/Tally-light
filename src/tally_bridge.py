@@ -22,9 +22,18 @@ last_active = None
 while True:
     active, preview = get_vmix_tally()
     
-    if active != last_active:
-        command = f"TALLY:{active}:{preview}\n"
-        ser.write(command.encode())
-        last_active = active
+    # Inside your while loop in tally_bridge.py:
+    if active == '1': # Assume Input 1 is your camera
+        current_state = 1 # 1 = Red (Active)
+    elif preview == '1':
+        current_state = 2 # 2 = Green (Preview)
+    else:
+        current_state = 0 # 0 = Off
+
+    # Only send if state changed
+    if current_state != last_active:
+        msg = f"{current_state}\n" # Send JUST the number and a newline
+        ser.write(msg.encode())
+        last_active = current_state
         
     time.sleep(0.2) # Poll every 200ms

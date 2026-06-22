@@ -55,14 +55,21 @@
 }
   void loop() {
   if (Serial.available() > 0) {
-    // Read the incoming character (e.g., '0', '1', or '2' from your PC)
-    char cmd = Serial.read();
+    // Read the full string sent by Python
+    String command = Serial.readStringUntil('\n');
     
-    // Convert char to int
-    uint8_t dataToSend = cmd - '0'; 
-    
-    // Broadcast to the RX (ensure broadcast address is used if you have multiple lights)
-    esp_now_send(rxAddress, &dataToSend, sizeof(dataToSend));
+    // Example format expected: "1" (Active), "2" (Preview), "0" (Off)
+    // We only need the first character if you are sending "1", "2", or "0"
+    if (command.length() > 0) {
+      uint8_t dataToSend = command.charAt(0) - '0';
+      
+      // Send via ESP-NOW
+      esp_now_send(rxAddress, &dataToSend, sizeof(dataToSend));
+      
+      // Optional: Debugging
+      Serial.print("Sending to RX: ");
+      Serial.println(dataToSend);
+    }
   }
 }
 #endif
