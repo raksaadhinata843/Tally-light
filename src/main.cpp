@@ -15,7 +15,7 @@
 #ifdef IS_RX
   #include <ESP8266WiFi.h>
   #include <espnow.h>
-  #define RED 5
+  #define RED 1
   #define YELLOW 4
   #define GREEN 2
 
@@ -70,20 +70,23 @@
   // Masukkan kode RX Anda di sini
   void setup() {
   Serial.begin(115200);
+
   pinMode(RED, OUTPUT);
   pinMode(YELLOW, OUTPUT);
+  pinMode(GREEN, OUTPUT);
+  digitalWrite(RED, LOW);
+  digitalWrite(YELLOW, LOW);  
+  digitalWrite(GREEN, LOW);
+  
   WiFi.mode(WIFI_STA);
   wifi_set_channel(1);
-  delay(100); // Beri waktu untuk WiFi stabil
-  Serial.println("Receiver initializing...");
+  delay(100); 
   Serial.println(WiFi.macAddress());
 
   if (esp_now_init() != 0) return;
-  Serial.println("ESP-NOW initialized successfully.");
   
   esp_now_set_self_role(ESP_NOW_ROLE_SLAVE);
   esp_now_register_recv_cb(OnDataRecv);
-  Serial.println("Receiver ready, waiting for data...");
 }
 
   void loop() {
