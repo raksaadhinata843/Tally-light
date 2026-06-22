@@ -15,9 +15,9 @@
 #ifdef IS_RX
   #include <ESP8266WiFi.h>
   #include <espnow.h>
-  #define RED 1
-  #define YELLOW 4
-  #define GREEN 2
+  #define RED 5
+  #define BLUE 14
+  #define GREEN 4
 
   int triggered = 0;
 
@@ -43,15 +43,22 @@
 #ifdef IS_TX
   // Masukkan kode TX Anda di sini
   void setup() {
+  Serial.begin(115200);
   WiFi.mode(WIFI_STA);
-  esp_now_init();
+  if (esp_now_init() != 0) {
+    Serial.println("Error initializing ESP-NOW");
+    return;
+  }
 
   // Mendaftarkan peer (Target RX)
   esp_now_peer_info_t peerInfo = {};
   memcpy(peerInfo.peer_addr, rxAddress, 6);
   peerInfo.channel = 1;  
   peerInfo.encrypt = false;
-  esp_now_add_peer(&peerInfo);
+  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+    Serial.println("Failed to add peer");
+    return;
+  }
 }
   void loop() {
   if (Serial.available() > 0) {
@@ -80,19 +87,22 @@
   Serial.begin(115200);
 
   pinMode(RED, OUTPUT);
-  pinMode(YELLOW, OUTPUT);
+  pinMode(BLUE, OUTPUT);
   pinMode(GREEN, OUTPUT);
   digitalWrite(RED, LOW);
-  digitalWrite(YELLOW, LOW);  
+  digitalWrite(BLUE, LOW);  
   digitalWrite(GREEN, LOW);
   
   WiFi.mode(WIFI_STA);
-  wifi_set_channel(1);
   delay(100); 
   Serial.println(WiFi.macAddress());
 
-  if (esp_now_init() != 0) return;
-  
+  if (esp_now_init() != 0) {
+    Serial.println("Error initializing ESP-NOW");
+    return;
+  }
+
+  wifi_set_channel(1);
   esp_now_set_self_role(ESP_NOW_ROLE_SLAVE);
   esp_now_register_recv_cb(OnDataRecv);
 }
@@ -101,7 +111,7 @@
   // Directly control LEDs based on the 'triggered' variable
   // No delays! This makes it instant.
   digitalWrite(RED, (triggered == 1) ? HIGH : LOW);
-  digitalWrite(YELLOW, (triggered == 0) ? HIGH : LOW);
+  digitalWrite(BLUE, (triggered == 0) ? HIGH : LOW);
   digitalWrite(GREEN, (triggered == 2) ? HIGH : LOW);
 }
 #endif
