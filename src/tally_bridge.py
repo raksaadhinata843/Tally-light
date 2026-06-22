@@ -4,7 +4,7 @@ import time
 import xml.etree.ElementTree as ET
 
 # Setup connection to your Master ESP32 (adjust COM port)
-ser = serial.Serial('COM3', 115200) 
+ser = serial.Serial('COM4', 115200) 
 
 def get_vmix_tally():
     try:
