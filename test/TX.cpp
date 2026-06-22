@@ -1,26 +1,34 @@
 #include <esp_now.h>
 #include <WiFi.h>
 
-// Replace these with the actual MAC addresses of your 4 TX boards
-uint8_t txAddresses[][6] = {
-  {0x24, 0x6F, 0x28, 0xAA, 0xAA, 0xAA}, // TX 1
-  {0x24, 0x6F, 0x28, 0xBB, 0xBB, 0xBB}, // TX 2
-  {0x24, 0x6F, 0x28, 0xCC, 0xCC, 0xCC}, // TX 3
-  {0x24, 0x6F, 0x28, 0xDD, 0xDD, 0xDD}  // TX 4
-};
+// MAC Address RX (NodeMCU V3)
+uint8_t rxAddress[] = {0x24, 0xD7, 0xEB, 0xCD, 0x27, 0x3D}; 
 
-const int ledPin = 5;
-
-void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-  bool isLive = *incomingData;
-  digitalWrite(ledPin, isLive ? HIGH : LOW);
+// Fungsi khusus pengiriman data
+bool sendData(bool status) {
+  uint8_t dataToSend = status ? 1 : 0;
+  
+  // esp_now_send langsung mengirim data ke alamat MAC target
+  esp_err_t result = esp_now_send(rxAddress, &dataToSend, sizeof(dataToSend));
+  
+  return (result == ESP_OK); // Mengembalikan true jika sukses, false jika gagal
 }
 
 void setup() {
-  pinMode(ledPin, OUTPUT);
   WiFi.mode(WIFI_STA);
   esp_now_init();
-  esp_now_register_recv_cb(OnDataRecv);
+
+  // Mendaftarkan peer (Target RX)
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(peerInfo.peer_addr, rxAddress, 6);
+  peerInfo.channel = 1;  
+  peerInfo.encrypt = false;
+  esp_now_add_peer(&peerInfo);
 }
 
-void loop() {}
+void loop() {
+  // Mengirim data status "true" setiap 2 detik
+  sendData(true);
+  
+  delay(2000); 
+}
