@@ -15,11 +15,18 @@
 #ifdef IS_RX
   #include <ESP8266WiFi.h>
   #include <espnow.h>
-  #define LED_PIN 5
+  #define RED 5
+  #define YELLOW 4
+  #define LED_PIN 2
   volatile bool triggered = false;
 
   void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len) {
     triggered = true;
+    Serial.print("Data received from: ");
+    for (int i = 0; i < 6; i++) {
+      Serial.print(mac[i], HEX);
+      if (i < 5) Serial.print(":");
+    }
   }
 #endif
 
@@ -42,27 +49,42 @@
   sendData(true);
   
   delay(2000); 
+
+  sendData(false);
+  delay(2000);
 }
 #endif
 
 #ifdef IS_RX
   // Masukkan kode RX Anda di sini
   void setup() {
-  pinMode(LED_PIN, OUTPUT);
+  Serial.begin(115200);
+  pinMode(RED, OUTPUT);
+  pinMode(YELLOW, OUTPUT);
   WiFi.mode(WIFI_STA);
-  wifi_set_channel(1); 
+  wifi_set_channel(1);
+  delay(100); // Beri waktu untuk WiFi stabil
+  Serial.println("Receiver initializing...");
+  Serial.println(WiFi.macAddress());
+
   
   if (esp_now_init() != 0) return;
+  Serial.println("ESP-NOW initialized successfully.");
   
   esp_now_set_self_role(ESP_NOW_ROLE_SLAVE);
   esp_now_register_recv_cb(OnDataRecv);
+  Serial.println("Receiver ready, waiting for data...");
 }
   void loop() {
   if (triggered) {
-    digitalWrite(LED_PIN, HIGH);
-    delay(100); 
-    digitalWrite(LED_PIN, LOW);
-    triggered = false;
+    digitalWrite(RED, HIGH);
+    Serial.println("LED ON");
+    delay(1000);
+    digitalWrite(RED, LOW);
+  } else (triggered == false); {
+    digitalWrite(YELLOW, HIGH);
+    delay(1000);
+    digitalWrite(YELLOW, LOW);
   }
 }
 #endif
