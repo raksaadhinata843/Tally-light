@@ -27,6 +27,8 @@
   #define GREEN 4
 
   int triggered = 0;
+  unsigned long lastRecvTime = 0;
+
   typedef struct __attribute__((packed)) struct_message {
     int32_t cameraID;
     int32_t state;
@@ -40,9 +42,13 @@
     // Now you know exactly what to do:
     Serial.print("Camera: "); Serial.print(myData.cameraID);
     Serial.print(" State: "); Serial.println(myData.state);
+
     
+    lastRecvTime = millis();
+  
     if (myData.cameraID == 3) { 
         triggered = myData.state;
+        
     }
   }
 #endif
@@ -111,8 +117,10 @@ if (Serial.available() > 0) {
 }
 
   void loop() {
-  // Directly control LEDs based on the 'triggered' variable
-  // No delays! This makes it instant.
+
+  if (millis() - lastRecvTime > 3000) {
+        triggered = 0;}
+
   digitalWrite(RED, (triggered == 1) ? HIGH : LOW);
   digitalWrite(BLUE, (triggered == 0) ? HIGH : LOW);
   digitalWrite(GREEN, (triggered == 2) ? HIGH : LOW);

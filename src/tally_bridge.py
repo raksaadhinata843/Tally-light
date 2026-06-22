@@ -20,18 +20,15 @@ last_preview = None
 
 while True:
     active, preview = get_vmix_tally()
+    print(f"DEBUG: Active={active}, Preview={preview}")
     
     if active and preview:
         # Send Active Tally (State 1)
-        if active != last_active:
-            ser.write(f"{active}:1\n".encode())
-            print(f"Sent Active: {active}")
-            last_active = active
+        if active == '3':
+            ser.write(f"3:1\n".encode())
+        elif preview == '3':
+            ser.write(f"3:2\n".encode())
+        else:
+            ser.write(f"3:0\n".encode())
             
-        # Send Preview Tally (State 2)
-        if preview != last_preview:
-            ser.write(f"{preview}:2\n".encode())
-            print(f"Sent Preview: {preview}")
-            last_preview = preview
-            
-    time.sleep(0.2)
+    time.sleep(2)
