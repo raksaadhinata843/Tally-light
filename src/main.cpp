@@ -54,15 +54,16 @@
   esp_now_add_peer(&peerInfo);
 }
   void loop() {
-  // Mengirim data status "true" setiap 2 detik
-  sendData(0);
-  delay(2000); 
-
-  sendData(1);
-  delay(2000);
-
-  sendData(2);
-  delay(2000);
+  if (Serial.available() > 0) {
+    // Read the incoming character (e.g., '0', '1', or '2' from your PC)
+    char cmd = Serial.read();
+    
+    // Convert char to int
+    uint8_t dataToSend = cmd - '0'; 
+    
+    // Broadcast to the RX (ensure broadcast address is used if you have multiple lights)
+    esp_now_send(rxAddress, &dataToSend, sizeof(dataToSend));
+  }
 }
 #endif
 
@@ -90,20 +91,10 @@
 }
 
   void loop() {
-  if (triggered == 1) {
-    digitalWrite(RED, HIGH);
-    Serial.println("LED ON");
-    delay(2000);
-    digitalWrite(RED, LOW);
-    triggered = 0; // Reset triggered after handling
-  } else if (triggered == 0) {
-    digitalWrite(YELLOW, HIGH);
-    delay(2000);
-    digitalWrite(YELLOW, LOW);
-  } else if (triggered == 2) {
-    digitalWrite(GREEN, HIGH);
-    delay(2000);
-    digitalWrite(GREEN, LOW);
-  }
+  // Directly control LEDs based on the 'triggered' variable
+  // No delays! This makes it instant.
+  digitalWrite(RED, (triggered == 1) ? HIGH : LOW);
+  digitalWrite(YELLOW, (triggered == 0) ? HIGH : LOW);
+  digitalWrite(GREEN, (triggered == 2) ? HIGH : LOW);
 }
 #endif
