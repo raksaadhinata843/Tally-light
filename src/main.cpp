@@ -17,15 +17,24 @@
   #include <espnow.h>
   #define RED 5
   #define YELLOW 4
-  #define LED_PIN 2
+  #define GREEN 2
   volatile bool triggered = false;
 
   void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len) {
-    triggered = true;
+    
     Serial.print("Data received from: ");
     for (int i = 0; i < 6; i++) {
       Serial.print(mac[i], HEX);
       if (i < 5) Serial.print(":");
+    }
+    uint8_t receivedStatus = incomingData[0];
+    
+    if (receivedStatus == 0) {
+      triggered = 0;
+    } else if (receivedStatus == 1) {
+      triggered = 1;
+    } else {
+      triggered = 2;
     }
   }
 #endif
@@ -46,11 +55,13 @@
 }
   void loop() {
   // Mengirim data status "true" setiap 2 detik
-  sendData(true);
-  
+  sendData(0);
   delay(2000); 
 
-  sendData(false);
+  sendData(1);
+  delay(2000);
+
+  sendData(2);
   delay(2000);
 }
 #endif
@@ -76,15 +87,19 @@
   Serial.println("Receiver ready, waiting for data...");
 }
   void loop() {
-  if (triggered) {
+  if (triggered == 0) {
     digitalWrite(RED, HIGH);
     Serial.println("LED ON");
     delay(1000);
     digitalWrite(RED, LOW);
-  } else (triggered == false); {
+  } else if (triggered == 1) {
     digitalWrite(YELLOW, HIGH);
     delay(1000);
     digitalWrite(YELLOW, LOW);
+  } else {
+    digitalWrite(GREEN, HIGH);
+    delay(1000);
+    digitalWrite(GREEN, LOW);
   }
 }
 #endif
