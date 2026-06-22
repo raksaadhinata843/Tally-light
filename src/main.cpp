@@ -10,6 +10,13 @@
     uint8_t dataToSend = status ? 1 : 0;
     return esp_now_send(rxAddress, &dataToSend, sizeof(dataToSend)) == ESP_OK;
   }
+
+  typedef struct __attribute__((packed)) struct_message {
+    int32_t cameraID;
+    int32_t state;
+} struct_message;
+
+  struct_message myData;
 #endif
 
 #ifdef IS_RX
@@ -20,22 +27,22 @@
   #define GREEN 4
 
   int triggered = 0;
+  typedef struct __attribute__((packed)) struct_message {
+    int32_t cameraID;
+    int32_t state;
+} struct_message;
 
-  void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len) {
+  struct_message myData;
+
+ void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len) {
+    memcpy(&myData, incomingData, sizeof(myData));
     
-    Serial.print("Data received from: ");
-    for (int i = 0; i < 6; i++) {
-      Serial.print(mac[i], HEX);
-      if (i < 5) Serial.print(":");
-    }
-    uint8_t receivedStatus = incomingData[0];
+    // Now you know exactly what to do:
+    Serial.print("Camera: "); Serial.print(myData.cameraID);
+    Serial.print(" State: "); Serial.println(myData.state);
     
-    if (receivedStatus == 0) {
-      triggered = 0;
-    } else if (receivedStatus == 1) {
-      triggered = 1;
-    } else {
-      triggered = 2;
+    if (myData.cameraID == 3) { 
+        triggered = myData.state;
     }
   }
 #endif
@@ -61,21 +68,17 @@
   }
 }
   void loop() {
-  if (Serial.available() > 0) {
-    // Read the full string sent by Python
-    String command = Serial.readStringUntil('\n');
-    
-    // Example format expected: "1" (Active), "2" (Preview), "0" (Off)
-    // We only need the first character if you are sending "1", "2", or "0"
-    if (command.length() > 0) {
-      uint8_t dataToSend = command.charAt(0) - '0';
-      
-      // Send via ESP-NOW
-      esp_now_send(rxAddress, &dataToSend, sizeof(dataToSend));
-      
-      // Optional: Debugging
-      Serial.print("Sending to RX: ");
-      Serial.println(dataToSend);
+  // Inside TX loop()
+if (Serial.available() > 0) {
+    String command = Serial.readStringUntil('\n'); // Format: "ID:State" e.g., "1:1"
+    int separatorIndex = command.indexOf(':');
+    if (separatorIndex > 0) {
+        myData.cameraID = command.substring(0, separatorIndex).toInt();
+        myData.state = command.substring(separatorIndex + 1).toInt();
+        
+        esp_now_send(rxAddress, (uint8_t *) &myData, sizeof(myData));
+        Serial.print("Sent ID: "); Serial.print(myData.cameraID);
+        Serial.print(" State: "); Serial.println(myData.state);
     }
   }
 }
