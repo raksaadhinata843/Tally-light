@@ -1,22 +1,32 @@
-#include <esp_now.h>
-#include <WiFi.h>
+#include <ESP8266WiFi.h>
+#include <espnow.h>
+#define LED_PIN 5
 
-// Replace with the MAC address of the RX Tally Light board
-uint8_t receiverAddress[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00}; 
-const int tallyPin = 2; // Connected to AVMATRIX GPIO
+// Replace with the MAC address of the TX board
+uint8_t mac[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00}; 
+
+volatile bool triggered = false; // Flag untuk loop
+
+void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len) {
+  triggered = true; // Hanya set flag
+}
 
 void setup() {
-  pinMode(tallyPin, INPUT_PULLUP);
+  pinMode(LED_PIN, OUTPUT);
   WiFi.mode(WIFI_STA);
-  esp_now_init();
+  wifi_set_channel(1); 
   
-  esp_now_peer_info_t peerInfo = {};
-  memcpy(peerInfo.peer_addr, receiverAddress, 6);
-  esp_now_add_peer(&peerInfo);
+  if (esp_now_init() != 0) return;
+  
+  esp_now_set_self_role(ESP_NOW_ROLE_SLAVE);
+  esp_now_register_recv_cb(OnDataRecv);
 }
 
 void loop() {
-  bool isLive = (digitalRead(tallyPin) == LOW);
-  esp_now_send(receiverAddress, (uint8_t *) &isLive, sizeof(isLive));
-  delay(100); 
+  if (triggered) {
+    digitalWrite(LED_PIN, HIGH);
+    delay(100); 
+    digitalWrite(LED_PIN, LOW);
+    triggered = false;
+  }
 }
