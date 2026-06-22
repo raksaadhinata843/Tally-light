@@ -18,7 +18,8 @@
   #define RED 5
   #define YELLOW 4
   #define GREEN 2
-  volatile bool triggered = false;
+
+  int triggered = 0;
 
   void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len) {
     
@@ -38,7 +39,6 @@
     }
   }
 #endif
-
 
 #ifdef IS_TX
   // Masukkan kode TX Anda di sini
@@ -78,7 +78,6 @@
   Serial.println("Receiver initializing...");
   Serial.println(WiFi.macAddress());
 
-  
   if (esp_now_init() != 0) return;
   Serial.println("ESP-NOW initialized successfully.");
   
@@ -86,19 +85,21 @@
   esp_now_register_recv_cb(OnDataRecv);
   Serial.println("Receiver ready, waiting for data...");
 }
+
   void loop() {
-  if (triggered == 0) {
+  if (triggered == 1) {
     digitalWrite(RED, HIGH);
     Serial.println("LED ON");
-    delay(1000);
+    delay(2000);
     digitalWrite(RED, LOW);
-  } else if (triggered == 1) {
+    triggered = 0; // Reset triggered after handling
+  } else if (triggered == 0) {
     digitalWrite(YELLOW, HIGH);
-    delay(1000);
+    delay(2000);
     digitalWrite(YELLOW, LOW);
-  } else {
+  } else if (triggered == 2) {
     digitalWrite(GREEN, HIGH);
-    delay(1000);
+    delay(2000);
     digitalWrite(GREEN, LOW);
   }
 }
