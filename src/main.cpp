@@ -1,117 +1,168 @@
 #include <Arduino.h>
 
-// Common Structure
+// Struktur Data Utama yang Seragam untuk TX dan RX
 typedef struct __attribute__((packed)) struct_message {
-    int32_t cameraID;
-    int32_t state;
+    uint8_t pgm_mask; // Bitmask untuk PGM (Bit 0=Cam1, Bit 1=Cam2, dst)
+    uint8_t pvw_mask; // Bitmask untuk PVW (Bit 0=Cam1, Bit 1=Cam2, dst)
 } struct_message;
 
 struct_message myData;
 
-// --- TX CONFIGURATION (ESP32) ---
+// ====================================================================
+// --- TX CONFIGURATION ESP32 ---
+// ====================================================================
 #ifdef MODE_TX_ESP32
   #include <esp_now.h>
   #include <WiFi.h>
 
-  if 
+  // Alamat MAC Address ESP8266 Receiver Anda (Ganti sesuai MAC Receiver Anda)
   uint8_t rxAddress[] = {0x24, 0xD7, 0xEB, 0xCD, 0x27, 0x3D};
-  else
-  const uint8_t PGM_PINS[6] = {A3, A2, A1, A0, 4, 3};
-  const uint8_t PVW_PINS[6] = {1, 5, 6, 7, 8, 2};
+
+  const uint8_t PGM_PINS[4] = {12, 13, 25, 26}; // Kamera 1-4 PGM
+  const uint8_t PVW_PINS[4] = {27, 32, 33, 34}; // Kamera 1-4 PVW
+
+  const uint8_t LED_MODE = 2; // LED internal ESP32 untuk indikator vMix Active
+  
+  const unsigned long DEBOUNCE_MS = 50;
+  const unsigned long SERIAL_TIMEOUT = 2000;
+  const unsigned long SEND_INTERVAL = 100;
+
+  unsigned long lastSerialRx = 0;
+  unsigned long lastSend = 0;
+  bool vmixActive = false;
+
+  uint8_t readPhysicalMask(const uint8_t pins[4]) {
+    uint8_t m = 0;
+    for (uint8_t i = 0; i < 4; i++) {
+      if (digitalRead(pins[i]) == LOW) {
+        m |= (1 << i);
+      }
+    }
+    return m;
+  }
+
+  void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {}
 
   void setup() {
     Serial.begin(115200);
     WiFi.mode(WIFI_STA);
-    if (esp_now_init() != ESP_OK) {
-      return;
-    }
+    WiFi.disconnect();
+
+    if (esp_now_init() != ESP_OK) return;
+    esp_now_register_send_cb(OnDataSent);
+
+    // Daftarkan Peer Receiver
     esp_now_peer_info_t peerInfo = {};
     memcpy(peerInfo.peer_addr, rxAddress, 6);
     peerInfo.channel = 1;  
     peerInfo.encrypt = false;
     esp_now_add_peer(&peerInfo);
+
+    // Inisialisasi Pin Input
+    for (uint8_t i = 0; i < 4; i++) {
+      pinMode(PGM_PINS[i], INPUT_PULLUP);
+      if(PVW_PINS[i] == 34) {
+        pinMode(PVW_PINS[i], INPUT); // GPIO 34 tidak punya pullup internal murni
+      } else {
+        pinMode(PVW_PINS[i], INPUT_PULLUP);
+      }
+    }
+    pinMode(LED_MODE, OUTPUT);
   }
 
   void loop() {
+    // 1. Deteksi Mode Otomatis
+    vmixActive = (millis() - lastSerialRx) <= SERIAL_TIMEOUT;
+    digitalWrite(LED_MODE, vmixActive ? HIGH : LOW);
+
+    // 2. Baca Data Serial vMix ("PGM_MASK,PVW_MASK\n")
     if (Serial.available() > 0) {
-      String command = Serial.readStringUntil('\n');
-      int separatorIndex = command.indexOf(':');
-      if (separatorIndex > 0) {
-        myData.cameraID = command.substring(0, separatorIndex).toInt();
-        myData.state = command.substring(separatorIndex + 1).toInt();
-        esp_now_send(rxAddress, (uint8_t *) &myData, sizeof(myData));
+      String data = Serial.readStringUntil('\n');
+      int commaIndex = data.indexOf(',');
+      if (commaIndex > 0) {
+        myData.pgm_mask = data.substring(0, commaIndex).toInt();
+        myData.pvw_mask = data.substring(commaIndex + 1).toInt();
+        lastSerialRx = millis(); 
       }
+    }
+
+    // 3. Baca Data Fisik DB15 jika vMix tidak aktif
+    if (!vmixActive) {
+      static unsigned long lastPhysicalRead = 0;
+      if (millis() - lastPhysicalRead >= DEBOUNCE_MS) {
+        lastPhysicalRead = millis();
+        myData.pgm_mask = readPhysicalMask(PGM_PINS);
+        myData.pvw_mask = readPhysicalMask(PVW_PINS);
+      }
+    }
+
+    // 4. Kirim Data Secara Berkala
+    if (millis() - lastSend >= SEND_INTERVAL) {
+      lastSend = millis();
+      esp_now_send(rxAddress, (uint8_t *) &myData, sizeof(myData));
     }
   }
 #endif
 
-// --- RX CONFIGURATION (ESP8266) ---
+// ====================================================================
+// --- RX CONFIGURATION ESP8266 ---
+// ====================================================================
 #ifdef MODE_RX_ESP8266 
   #include <ESP8266WiFi.h>
   #include <espnow.h>
-  #define RED 5
-  #define BLUE 14
-  #define GREEN 4
 
-  int triggered = 0;
-  unsigned long lastRecvTime = 0;
+  // Isikan nomor kamera untuk board penerima ini (Misal Lampu Kamera 1)
+  const uint8_t CAM_ID = 1; 
 
-  void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len) {
-    memcpy(&myData, incomingData, sizeof(myData));
-    if (myData.cameraID == 1) { 
-        triggered = myData.state;
-    }
-    else if (myData.cameraID == 2) {
-        triggered = myData.state;
-    }
-    else if (myData.cameraID == 3) {
-        triggered = myData.state;
+  // Pin Output LED Tally pada ESP8266 (Ganti nomor pin jika diinginkan)
+  #define RED 5    // GPIO 5 (D1)
+  #define GREEN 4  // GPIO 4 (D2)
+  #define BLUE 14  // GPIO 14 (D5)
+
+  // Callback penerima ESP-NOW versi ESP8266 (Tipe argumen berbeda dengan ESP32)
+  void OnDataRecv(uint8_t *mac, uint8_t *incomingData, uint8_t len) {
+    if (len >= sizeof(myData)) {
+      memcpy(&myData, incomingData, sizeof(myData));
     }
   }
 
   void setup() {
     Serial.begin(115200);
-    pinMode(RED, OUTPUT); pinMode(BLUE, OUTPUT); pinMode(GREEN, OUTPUT);
+    pinMode(RED, OUTPUT); 
+    pinMode(BLUE, OUTPUT); 
+    pinMode(GREEN, OUTPUT);
+    
     WiFi.mode(WIFI_STA);
+    WiFi.disconnect(); // Membersihkan koneksi Wi-Fi bawaan
+    
+    // Inisialisasi ESP-NOW khusus ESP8266
     if (esp_now_init() != 0) return;
+    
     esp_now_set_self_role(ESP_NOW_ROLE_SLAVE);
     esp_now_register_recv_cb(OnDataRecv);
   }
 
   void loop() {
-    digitalWrite(RED, (triggered == 1) ? HIGH : LOW);
-    digitalWrite(BLUE, (triggered == 0) ? HIGH : LOW);
-    digitalWrite(GREEN, (triggered == 2) ? HIGH : LOW);
-  }
-#endif
+    // Dekode status kamera dari data bitmask mask yang diterima
+    bool isPgm = (myData.pgm_mask & (1 << (CAM_ID - 1))) != 0;
+    bool isPvw = (myData.pvw_mask & (1 << (CAM_ID - 1))) != 0;
 
-// --- RX CONFIGURATION (ESP32) ---
-#ifdef MODE_RX_ESP32
-  #include <WiFi.h>
-  #include <esp_now.h>
-  #define RED 23
-  #define GREEN 22
-  #define BLUE 21
-
-  int triggered = 0;
-  unsigned long lastRecvTime = 0;
-
-  void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
-  if (len >= sizeof(myData)) {
-    memcpy(&myData, incomingData, sizeof(myData));
-  }
-}
-
-  void setup() {
-    Serial.begin(115200);
-    pinMode(RED, OUTPUT); pinMode(BLUE, OUTPUT); pinMode(GREEN, OUTPUT);
-    WiFi.mode(WIFI_STA);
-    if (esp_now_init() != 0) return;
-  }
-
-  void loop() {
-    analogWrite(RED, (triggered == 1) ? HIGH : LOW);
-    analogWrite(BLUE, (triggered == 0) ? HIGH : LOW);
-    analogWrite(GREEN, (triggered == 2) ? HIGH : LOW);
+    // Kendali Lampu Tally menggunakan digitalWrite standard (Lebih stabil untuk On/Off)
+    if (isPgm) {
+      digitalWrite(RED, HIGH);    // Merah Menyala jika LIVE (Program)
+      digitalWrite(GREEN, LOW);
+      digitalWrite(BLUE, LOW);
+    } 
+    else if (isPvw) {
+      digitalWrite(RED, LOW);
+      digitalWrite(GREEN, HIGH);  // Hijau Menyala jika Preview / Standby
+      digitalWrite(BLUE, LOW);
+    } 
+    else {
+      digitalWrite(RED, LOW);
+      digitalWrite(GREEN, LOW);
+      digitalWrite(BLUE, HIGH);   // Biru Menyala jika posisi Idle / Kamera tidak aktif
+    }
+    delay(50);
   }
 #endif
