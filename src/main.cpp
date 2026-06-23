@@ -62,7 +62,7 @@ struct_message myData;
     for (uint8_t i = 0; i < 4; i++) {
       pinMode(PGM_PINS[i], INPUT_PULLUP);
       if(PVW_PINS[i] == 34) {
-        pinMode(PVW_PINS[i], INPUT); // GPIO 34 tidak punya pullup internal murni
+        pinMode(PVW_PINS[i], INPUT);
       } else {
         pinMode(PVW_PINS[i], INPUT_PULLUP);
       }
