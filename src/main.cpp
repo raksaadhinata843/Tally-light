@@ -9,7 +9,7 @@ typedef struct __attribute__((packed)) struct_message {
 struct_message myData;
 
 // --- TX CONFIGURATION (ESP32) ---
-#ifdef MODE_TX
+#ifdef MODE_TX_ESP32
   #include <esp_now.h>
   #include <WiFi.h>
   uint8_t rxAddress[] = {0x24, 0xD7, 0xEB, 0xCD, 0x27, 0x3D}; 
@@ -41,7 +41,7 @@ struct_message myData;
 #endif
 
 // --- RX CONFIGURATION (ESP8266) ---
-#ifdef MODE_RX
+#ifdef MODE_RX_ESP8266
   #include <ESP8266WiFi.h>
   #include <espnow.h>
   #define RED 5
@@ -77,5 +77,43 @@ struct_message myData;
     digitalWrite(RED, (triggered == 1) ? HIGH : LOW);
     digitalWrite(BLUE, (triggered == 0) ? HIGH : LOW);
     digitalWrite(GREEN, (triggered == 2) ? HIGH : LOW);
+  }
+#endif
+
+// --- RX CONFIGURATION (ESP32) ---
+#ifdef MODE_RX_ESP32
+  #include <esp_now.h>
+  #include <wifi.h>
+  #define RED 25
+  #define BLUE 26
+  #define GREEN 27
+
+  int triggered = 0;
+  unsigned long lastRecvTime = 0;
+
+  void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len) {
+    memcpy(&myData, incomingData, sizeof(myData));
+    if (myData.cameraID == 1) { 
+        triggered = myData.state;
+    }
+    else if (myData.cameraID == 2) {
+        triggered = myData.state;
+    }
+    else if (myData.cameraID == 3) {
+        triggered = myData.state;
+    }
+  }
+
+  void setup() {
+    Serial.begin(115200);
+    pinMode(RED, OUTPUT); pinMode(BLUE, OUTPUT); pinMode(GREEN, OUTPUT);
+    WiFi.mode(WIFI_STA);
+    if (esp_now_init() != 0) return;
+  }
+
+  void loop() {
+    analogWrite(RED, (triggered == 1) ? HIGH : LOW);
+    analogWrite(BLUE, (triggered == 0) ? HIGH : LOW);
+    analogWrite(GREEN, (triggered == 2) ? HIGH : LOW);
   }
 #endif
