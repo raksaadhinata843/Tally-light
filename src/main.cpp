@@ -18,7 +18,6 @@ struct_message myData;
     Serial.begin(115200);
     WiFi.mode(WIFI_STA);
     if (esp_now_init() != ESP_OK) {
-      Serial.println("Error initializing ESP-NOW");
       return;
     }
     esp_now_peer_info_t peerInfo = {};
@@ -36,8 +35,6 @@ struct_message myData;
         myData.cameraID = command.substring(0, separatorIndex).toInt();
         myData.state = command.substring(separatorIndex + 1).toInt();
         esp_now_send(rxAddress, (uint8_t *) &myData, sizeof(myData));
-        Serial.print("Sent ID: "); Serial.print(myData.cameraID);
-        Serial.print(" State: "); Serial.println(myData.state);
       }
     }
   }
@@ -56,8 +53,6 @@ struct_message myData;
 
   void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len) {
     memcpy(&myData, incomingData, sizeof(myData));
-    Serial.printf("Camera: %d State: %d\n", myData.cameraID, myData.state);
-    lastRecvTime = millis();
     if (myData.cameraID == 1) { 
         triggered = myData.state;
     }
@@ -79,7 +74,6 @@ struct_message myData;
   }
 
   void loop() {
-    if (millis() - lastRecvTime > 3000) triggered = 0;
     digitalWrite(RED, (triggered == 1) ? HIGH : LOW);
     digitalWrite(BLUE, (triggered == 0) ? HIGH : LOW);
     digitalWrite(GREEN, (triggered == 2) ? HIGH : LOW);

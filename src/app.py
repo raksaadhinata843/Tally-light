@@ -5,11 +5,10 @@ import xml.etree.ElementTree as ET
 
 # Setup connection
 ser = serial.Serial('COM3', 115200)
-time.sleep(2) # Wait for ESP32 to reset after opening port
 
 def get_vmix_tally():
     try:
-        response = requests.get('http://172.22.128.1:58088/api/')
+        response = requests.get('http://192.168.0.5:58088/api/')
         root = ET.fromstring(response.content)
         return root.find('active').text, root.find('preview').text
     except:
@@ -26,5 +25,3 @@ while True:
             ser.write(f"1:2\n".encode())
         else:
             ser.write(f"1:0\n".encode())
-            
-    time.sleep(2)
