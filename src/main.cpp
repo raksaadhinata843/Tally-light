@@ -1,6 +1,5 @@
 #include <Arduino.h>
 
-// Struktur Data Utama yang Seragam untuk TX dan RX
 typedef struct __attribute__((packed)) struct_message {
     uint8_t pgm_mask;
     uint8_t pvw_mask;
