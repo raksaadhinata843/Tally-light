@@ -345,6 +345,5 @@ void loop() {
       digitalWrite(BLUE, HIGH);   // Biru jika Kamera tidak aktif (Idle)
     }
   }
-  delay(20); // Delay kecil untuk stabilitas pembacaan chip
 }
 #endif
