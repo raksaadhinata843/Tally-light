@@ -167,3 +167,102 @@ struct_message myData;
     delay(50);
   }
 #endif
+
+// ====================================================================
+// --- TX CONFIGURATION ANANO ---
+// ====================================================================
+
+#ifdef MODE_TX_NANO
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
+
+// Struktur Data yang dikirim lewat Udara (Persis seperti logika ESP Anda)
+struct Packet {
+  uint8_t pgm_mask; 
+  uint8_t pvw_mask; 
+};
+
+Packet pkt;
+
+// Inisialisasi pin CE dan CSN untuk NRF24L01
+RF24 radio(7, 8); 
+const byte address[6] = "TALLY"; // Alamat pipa komunikasi (Harus sama dengan Receiver)
+
+// Pemetaan Pin Fisik DB15 (Skenario Kamera 1-4 untuk IN3-IN6 Switcher)
+// A0-A3 pada Arduino Nano bisa diinisialisasi langsung sebagai pin digital input
+const uint8_t PGM_PINS[4] = {A2, A0, 4, 2}; // Kamera 1-4 PGM
+const uint8_t PVW_PINS[4] = {A3, A1, 5, 3}; // Kamera 1-4 PVW
+
+const uint8_t LED_MODE = 6; // LED Indikator Mode vMix Aktif
+
+const unsigned long DEBOUNCE_MS = 50;
+const unsigned long SERIAL_TIMEOUT = 2000;
+const unsigned long SEND_INTERVAL = 100;
+
+unsigned long lastSerialRx = 0;
+unsigned long lastSend = 0;
+bool vmixActive = false;
+
+uint8_t readPhysicalMask(const uint8_t pins[4]) {
+  uint8_t m = 0;
+  for (uint8_t i = 0; i < 4; i++) {
+    if (digitalRead(pins[i]) == LOW) {
+      m |= (1 << i);
+    }
+  }
+  return m;
+}
+
+void setup() {
+  Serial.begin(115200); // Digunakan untuk menangkap data serial vMix komputer
+  
+  // Inisialisasi Modul Wireless NRF24L01
+  if (!radio.begin()) {
+    while (1); // Kunci di sini jika modul NRF rusak/kabelnya salah pasang
+  }
+  radio.openWritingPipe(address);
+  radio.setPALevel(RF24_PA_MAX); // Jangkauan sinyal maksimum
+  radio.stopListening();         // Set sebagai Transmitter (TX)
+
+  // Inisialisasi Seluruh Pin Input (Menggunakan Pull-up internal 5V yang kuat)
+  for (uint8_t i = 0; i < 4; i++) {
+    pinMode(PGM_PINS[i], INPUT_PULLUP);
+    pinMode(PVW_PINS[i], INPUT_PULLUP);
+  }
+  pinMode(LED_MODE, OUTPUT);
+}
+
+void loop() {
+  // 1. Deteksi Mode Otomatis (vMix Serial vs Fisik DB15)
+  vmixActive = (millis() - lastSerialRx) <= SERIAL_TIMEOUT;
+  digitalWrite(LED_MODE, vmixActive ? HIGH : LOW);
+
+  // 2. Baca Data Serial vMix ("PGM_MASK,PVW_MASK\n")
+  if (Serial.available() > 0) {
+    String data = Serial.readStringUntil('\n');
+    int commaIndex = data.indexOf(',');
+    if (commaIndex > 0) {
+      pkt.pgm_mask = data.substring(0, commaIndex).toInt();
+      pkt.pvw_mask = data.substring(commaIndex + 1).toInt();
+      lastSerialRx = millis(); 
+    }
+  }
+
+  // 3. Baca Data Fisik DB15 jika vMix tidak aktif
+  if (!vmixActive) {
+    static unsigned long lastPhysicalRead = 0;
+    if (millis() - lastPhysicalRead >= DEBOUNCE_MS) {
+      lastPhysicalRead = millis();
+      pkt.pgm_mask = readPhysicalMask(PGM_PINS);
+      pkt.pvw_mask = readPhysicalMask(PVW_PINS);
+    }
+  }
+
+  // 4. Kirim Paket via NRF24L01 Secara Berkala
+  if (millis() - lastSend >= SEND_INTERVAL) {
+    lastSend = millis();
+    radio.write(&pkt, sizeof(pkt));
+  }
+}
+#endif
