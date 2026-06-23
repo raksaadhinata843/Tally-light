@@ -266,3 +266,85 @@ void loop() {
   }
 }
 #endif
+
+// ====================================================================
+// --- RX CONFIGURATION ANANO ---
+// ====================================================================
+#ifdef MODE_RX_NANO
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
+
+// Definisikan nomor kamera untuk board penerima ini (Contoh: Lampu Kamera 1)
+const uint8_t CAM_ID = 1; 
+
+// Definisi Pin Output LED Tally sesuai Tabel Hardware
+#define RED 5    
+#define GREEN 4  
+#define BLUE 3   
+
+// Struktur Data harus sama persis dengan yang dikirim oleh Transmitter
+struct Packet {
+  uint8_t pgm_mask; 
+  uint8_t pvw_mask; 
+};
+
+Packet receivedPkt;
+
+RF24 radio(7, 8); // Pin CE, CSN
+const byte address[6] = "TALLY"; // Alamat pipa harus sama dengan Transmitter
+
+void setup() {
+  Serial.begin(115200);
+  
+  pinMode(RED, OUTPUT); 
+  pinMode(GREEN, OUTPUT); 
+  pinMode(BLUE, OUTPUT);
+  
+  // Tes lampu saat dinyalakan (opsional, untuk memastikan LED berfungsi)
+  digitalWrite(BLUE, HIGH); 
+  delay(500);
+  digitalWrite(BLUE, LOW);
+
+  // Inisialisasi Modul Wireless nRF24L01
+  if (!radio.begin()) {
+    Serial.println("nRF24L01 gagal mendeteksi hardware!");
+    while (1); // Kunci di sini jika modul nRF rusak / kabel salah
+  }
+  
+  radio.openReadingPipe(1, address);
+  radio.setPALevel(RF24_PA_MAX); // Jangkauan maksimum
+  radio.startListening();        // Set board sebagai Penerima (RX)
+  Serial.println("Receiver Tally Nano Siap...");
+}
+
+void loop() {
+  // Cek apakah ada data masuk melalui udara
+  if (radio.available()) {
+    // Baca data paket bitmask
+    radio.read(&receivedPkt, sizeof(receivedPkt));
+
+    // Dekode status kamera berdasarkan CAM_ID yang ditentukan di atas
+    bool isPgm = (receivedPkt.pgm_mask & (1 << (CAM_ID - 1))) != 0;
+    bool isPvw = (receivedPkt.pvw_mask & (1 << (CAM_ID - 1))) != 0;
+
+    // Kendali Lampu Tally
+    if (isPgm) {
+      digitalWrite(RED, HIGH);    // Merah jika LIVE (Program)
+      digitalWrite(GREEN, LOW);
+      digitalWrite(BLUE, LOW);
+    } 
+    else if (isPvw) {
+      digitalWrite(RED, LOW);
+      digitalWrite(GREEN, HIGH);  // Hijau jika Standby (Preview)
+      digitalWrite(BLUE, LOW);
+    } 
+    else {
+      digitalWrite(RED, LOW);
+      digitalWrite(GREEN, LOW);
+      digitalWrite(BLUE, HIGH);   // Biru jika Kamera tidak aktif (Idle)
+    }
+  }
+  delay(20); // Delay kecil untuk stabilitas pembacaan chip
+}
+#endif
