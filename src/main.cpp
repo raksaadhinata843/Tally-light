@@ -2,8 +2,8 @@
 
 // Struktur Data Utama yang Seragam untuk TX dan RX
 typedef struct __attribute__((packed)) struct_message {
-    uint8_t pgm_mask; // Bitmask untuk PGM (Bit 0=Cam1, Bit 1=Cam2, dst)
-    uint8_t pvw_mask; // Bitmask untuk PVW (Bit 0=Cam1, Bit 1=Cam2, dst)
+    uint8_t pgm_mask;
+    uint8_t pvw_mask;
 } struct_message;
 
 struct_message myData;
@@ -11,6 +11,7 @@ struct_message myData;
 // ====================================================================
 // --- TX CONFIGURATION ESP32 ---
 // ====================================================================
+
 #ifdef MODE_TX_ESP32
   #include <esp_now.h>
   #include <WiFi.h>
@@ -107,6 +108,7 @@ struct_message myData;
 // ====================================================================
 // --- RX CONFIGURATION ESP8266 ---
 // ====================================================================
+
 #ifdef MODE_RX_ESP8266 
   #include <ESP8266WiFi.h>
   #include <espnow.h>
