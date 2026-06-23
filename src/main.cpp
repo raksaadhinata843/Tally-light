@@ -82,27 +82,20 @@ struct_message myData;
 
 // --- RX CONFIGURATION (ESP32) ---
 #ifdef MODE_RX_ESP32
+  #include <WiFi.h>
   #include <esp_now.h>
-  #include <wifi.h>
-  #define RED 25
-  #define BLUE 26
-  #define GREEN 27
+  #define RED 23
+  #define GREEN 22
+  #define BLUE 21
 
   int triggered = 0;
   unsigned long lastRecvTime = 0;
 
-  void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len) {
+  void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
+  if (len >= sizeof(myData)) {
     memcpy(&myData, incomingData, sizeof(myData));
-    if (myData.cameraID == 1) { 
-        triggered = myData.state;
-    }
-    else if (myData.cameraID == 2) {
-        triggered = myData.state;
-    }
-    else if (myData.cameraID == 3) {
-        triggered = myData.state;
-    }
   }
+}
 
   void setup() {
     Serial.begin(115200);
