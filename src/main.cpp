@@ -8,20 +8,25 @@ typedef struct __attribute__((packed)) struct_message {
 struct_message myData;
 
 // ====================================================================
-// --- TX CONFIGURATION ESP32 ---
+// --- TX CONFIGURATION ESP32 (DUAL OUTPUT: ESP-NOW + nRF24L01) ---
 // ====================================================================
 
 #ifdef MODE_TX_ESP32
   #include <esp_now.h>
   #include <WiFi.h>
+  #include <SPI.h>
+  #include <nRF24L01.h>
+  #include <RF24.h>
 
-  // Alamat MAC Address ESP8266 Receiver Anda (Ganti sesuai MAC Receiver Anda)
+  RF24 radio(4, 5); // CE, CSN
+  const byte nrfAddress[6] = "TALLY";
+
   uint8_t rxAddress[] = {0x24, 0xD7, 0xEB, 0xCD, 0x27, 0x3D};
 
   const uint8_t PGM_PINS[4] = {12, 13, 25, 26}; // Kamera 1-4 PGM
   const uint8_t PVW_PINS[4] = {27, 32, 33, 34}; // Kamera 1-4 PVW
 
-  const uint8_t LED_MODE = 2; // LED internal ESP32 untuk indikator vMix Active
+  const uint8_t LED_MODE = 2; 
   
   const unsigned long DEBOUNCE_MS = 50;
   const unsigned long SERIAL_TIMEOUT = 2000;
@@ -45,37 +50,43 @@ struct_message myData;
 
   void setup() {
     Serial.begin(115200);
+    
+    // --- Inisialisasi ESP-NOW ---
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
+    if (esp_now_init() == ESP_OK) {
+      esp_now_register_send_cb(OnDataSent);
+      esp_now_peer_info_t peerInfo = {};
+      memcpy(peerInfo.peer_addr, rxAddress, 6);
+      peerInfo.channel = 1;  
+      peerInfo.encrypt = false;
+      esp_now_add_peer(&peerInfo);
+    }
 
-    if (esp_now_init() != ESP_OK) return;
-    esp_now_register_send_cb(OnDataSent);
+    // --- Inisialisasi nRF24L01 ---
+    if (radio.begin()) {
+      radio.openWritingPipe(nrfAddress);
+      radio.setPALevel(RF24_PA_MAX);
+      radio.stopListening();
+    }
 
-    // Daftarkan Peer Receiver
-    esp_now_peer_info_t peerInfo = {};
-    memcpy(peerInfo.peer_addr, rxAddress, 6);
-    peerInfo.channel = 1;  
-    peerInfo.encrypt = false;
-    esp_now_add_peer(&peerInfo);
-
-    // Inisialisasi Pin Input
+    // Inisialisasi Pin Input Switcher Fisik
     for (uint8_t i = 0; i < 4; i++) {
       pinMode(PGM_PINS[i], INPUT_PULLUP);
       if(PVW_PINS[i] == 34) {
         pinMode(PVW_PINS[i], INPUT);
       } else {
-        pinMode(PVW_PINS[i], INPUT_PULLUP);
+        pinMode(PGM_PINS[i], INPUT_PULLUP);
       }
     }
     pinMode(LED_MODE, OUTPUT);
   }
 
   void loop() {
-    // 1. Deteksi Mode Otomatis
     vmixActive = (millis() - lastSerialRx) <= SERIAL_TIMEOUT;
     digitalWrite(LED_MODE, vmixActive ? HIGH : LOW);
 
-    // 2. Baca Data Serial vMix ("PGM_MASK,PVW_MASK\n")
+    // Baca vMix Serial
     if (Serial.available() > 0) {
       String data = Serial.readStringUntil('\n');
       int commaIndex = data.indexOf(',');
@@ -86,7 +97,7 @@ struct_message myData;
       }
     }
 
-    // 3. Baca Data Fisik DB15 jika vMix tidak aktif
+    // Baca Fisik DB15
     if (!vmixActive) {
       static unsigned long lastPhysicalRead = 0;
       if (millis() - lastPhysicalRead >= DEBOUNCE_MS) {
@@ -96,10 +107,14 @@ struct_message myData;
       }
     }
 
-    // 4. Kirim Data Secara Berkala
     if (millis() - lastSend >= SEND_INTERVAL) {
       lastSend = millis();
+      
+      // 1. ESP-NOW
       esp_now_send(rxAddress, (uint8_t *) &myData, sizeof(myData));
+
+      // 2. nRF24L01
+      radio.write(&myData, sizeof(myData)); 
     }
   }
 #endif
@@ -302,20 +317,15 @@ void setup() {
   pinMode(BLUE, OUTPUT);
   
   // Tes lampu saat dinyalakan (opsional, untuk memastikan LED berfungsi)
-  digitalWrite(BLUE, HIGH); 
-  delay(500);
+  digitalWrite(BLUE, HIGH);
   digitalWrite(BLUE, LOW);
 
   // Inisialisasi Modul Wireless nRF24L01
-  if (!radio.begin()) {
-    Serial.println("nRF24L01 gagal mendeteksi hardware!");
-    while (1); // Kunci di sini jika modul nRF rusak / kabel salah
-  }
+  if radio.begin() != ;
   
   radio.openReadingPipe(1, address);
   radio.setPALevel(RF24_PA_MAX); // Jangkauan maksimum
-  radio.startListening();        // Set board sebagai Penerima (RX)
-  Serial.println("Receiver Tally Nano Siap...");
+  radio.startListening();
 }
 
 void loop() {
