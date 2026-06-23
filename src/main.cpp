@@ -12,7 +12,12 @@ struct_message myData;
 #ifdef MODE_TX_ESP32
   #include <esp_now.h>
   #include <WiFi.h>
-  uint8_t rxAddress[] = {0x24, 0xD7, 0xEB, 0xCD, 0x27, 0x3D}; 
+
+  if 
+  uint8_t rxAddress[] = {0x24, 0xD7, 0xEB, 0xCD, 0x27, 0x3D};
+  else
+  const uint8_t PGM_PINS[6] = {A3, A2, A1, A0, 4, 3};
+  const uint8_t PVW_PINS[6] = {1, 5, 6, 7, 8, 2};
 
   void setup() {
     Serial.begin(115200);
@@ -41,7 +46,7 @@ struct_message myData;
 #endif
 
 // --- RX CONFIGURATION (ESP8266) ---
-#ifdef MODE_RX_ESP8266
+#ifdef MODE_RX_ESP8266 
   #include <ESP8266WiFi.h>
   #include <espnow.h>
   #define RED 5
