@@ -1,4 +1,8 @@
 #include <Arduino.h>
+#include <WiFi.h>
+
+const char* ssid = "";
+const char* password = "";
 
 typedef struct __attribute__((packed)) struct_message {
     uint8_t pgm_mask;
@@ -13,7 +17,6 @@ struct_message Cam;
 
 #ifdef MODE_TX_ESP32
   #include <esp_now.h>
-  #include <esp_wifi.h>
   #include <WiFi.h>
   #include <SPI.h>
   #include <nRF24L01.h>
@@ -134,6 +137,62 @@ struct_message Cam;
       radio.write(&Cam, sizeof(Cam)); 
     }
   }
+#endif
+
+// ====================================================================
+// --- TX CONFIGURATION ESP32 (DUAL OUTPUT: ESP-NOW + nRF24L01) ---
+// ====================================================================
+
+#ifdef MODE_TX_ESPUDP
+#include <WiFiUdp.h>
+
+IPAddress TIP[] = {
+  IPAddress(192, 168, 1, 101), 
+  IPAddress(192, 168, 1, 102)
+};
+
+WiFiUDP udp;
+
+void setup() {
+  Serial.begin(115200);
+  WiFi.begin(ssid, password);
+  
+  while (WiFi.status() != WL_CONNECTED) { delay(500); }
+  
+  udp.begin(8888);
+}
+
+void loop () {
+  Cam.pgm_mask = ;
+
+  
+}
+#endif
+
+// ====================================================================
+// --- RX CONFIGURATION ESP32 UDP ---
+// ====================================================================
+
+#ifdef MODE_RX_ESPUDP
+#include <WiFiUdp.h>
+
+IPAddress local_ip ();
+IPAddress gateway ();
+IPAddress subnet ();
+
+WiFiUDP udp;
+
+void setup () {
+  Serial.begin(115200);
+
+  WiFi.config(local_ip, gateway, subnet);
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+  }
+  udp.begin(8888)
+}
 #endif
 
 // ====================================================================
