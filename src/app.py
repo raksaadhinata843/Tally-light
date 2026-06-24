@@ -18,10 +18,13 @@ while True:
     active, preview = get_vmix_tally()
     print(f"DEBUG: Active={active}, Preview={preview}")
 
-    if active:
-        if active == '1':
-            ser.write(f"1:1\n".encode())
-        elif preview == '1':
-            ser.write(f"1:2\n".encode())
-        else:
-            ser.write(f"1:0\n".encode())
+    pgm = 0
+    pvw = 0
+
+    if active == '1':
+        pgm = 1
+    
+    if preview == '1':
+        pvw = 1
+
+    ser.write(f"{pgm},{pvw}\n".encode())

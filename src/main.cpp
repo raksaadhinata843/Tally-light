@@ -5,7 +5,7 @@ typedef struct __attribute__((packed)) struct_message {
     uint8_t pvw_mask;
 } struct_message;
 
-struct_message myData;
+struct_message Cam;
 
 // ====================================================================
 // --- TX CONFIGURATION ESP32 (DUAL OUTPUT: ESP-NOW + nRF24L01) ---
@@ -13,6 +13,7 @@ struct_message myData;
 
 #ifdef MODE_TX_ESP32
   #include <esp_now.h>
+  #include <esp_wifi.h>
   #include <WiFi.h>
   #include <SPI.h>
   #include <nRF24L01.h>
@@ -21,7 +22,7 @@ struct_message myData;
   RF24 radio(4, 5); // CE, CSN
   const byte nrfAddress[6] = "TALLY";
 
-  uint8_t rxAddress[] = {0x24, 0xD7, 0xEB, 0xCD, 0x27, 0x3D};
+  uint8_t rx1[] = {0x24, 0xD7, 0xEB, 0xCD, 0x27, 0x3D};
 
   const uint8_t PGM_PINS[4] = {12, 13, 25, 26}; // Kamera 1-4 PGM
   const uint8_t PVW_PINS[4] = {27, 32, 33, 34}; // Kamera 1-4 PVW
@@ -46,7 +47,17 @@ struct_message myData;
     return m;
   }
 
-  void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {}
+  void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+    for (int i = 0; i < 6; i++) {
+      Serial.printf("%02X", mac_addr[i]);
+      if (i < 5) Serial.println(";");
+    }
+    if (status == ESP_NOW_SEND_SUCCESS) {
+      Serial.println("0");
+    } else {
+      Serial.println("1");
+    }
+  }
 
   void setup() {
     Serial.begin(115200);
@@ -57,10 +68,11 @@ struct_message myData;
     if (esp_now_init() == ESP_OK) {
       esp_now_register_send_cb(OnDataSent);
       esp_now_peer_info_t peerInfo = {};
-      memcpy(peerInfo.peer_addr, rxAddress, 6);
+      memcpy(peerInfo.peer_addr, rx1, 6);
       peerInfo.channel = 1;  
       peerInfo.encrypt = false;
       esp_now_add_peer(&peerInfo);
+      
     }
 
     // --- Inisialisasi nRF24L01 ---
@@ -76,7 +88,7 @@ struct_message myData;
       if(PVW_PINS[i] == 34) {
         pinMode(PVW_PINS[i], INPUT);
       } else {
-        pinMode(PGM_PINS[i], INPUT_PULLUP);
+        pinMode(PVW_PINS[i], INPUT_PULLUP);
       }
     }
     pinMode(LED_MODE, OUTPUT);
@@ -89,10 +101,12 @@ struct_message myData;
     // Baca vMix Serial
     if (Serial.available() > 0) {
       String data = Serial.readStringUntil('\n');
+      data.trim();
       int commaIndex = data.indexOf(',');
+
       if (commaIndex > 0) {
-        myData.pgm_mask = data.substring(0, commaIndex).toInt();
-        myData.pvw_mask = data.substring(commaIndex + 1).toInt();
+        Cam.pgm_mask = (uint8_t)data.substring(0, commaIndex).toInt();
+        Cam.pvw_mask = (uint8_t)data.substring(commaIndex + 1).toInt();
         lastSerialRx = millis(); 
       }
     }
@@ -102,8 +116,8 @@ struct_message myData;
       static unsigned long lastPhysicalRead = 0;
       if (millis() - lastPhysicalRead >= DEBOUNCE_MS) {
         lastPhysicalRead = millis();
-        myData.pgm_mask = readPhysicalMask(PGM_PINS);
-        myData.pvw_mask = readPhysicalMask(PVW_PINS);
+        Cam.pgm_mask = readPhysicalMask(PGM_PINS);
+        Cam.pvw_mask = readPhysicalMask(PVW_PINS);
       }
     }
 
@@ -111,10 +125,13 @@ struct_message myData;
       lastSend = millis();
       
       // 1. ESP-NOW
-      esp_now_send(rxAddress, (uint8_t *) &myData, sizeof(myData));
+      uint8_t payload[2];
+      payload[0] = Cam.pgm_mask;
+      payload[1] = Cam.pvw_mask;
+      esp_now_send(rx1, payload, 2);
 
       // 2. nRF24L01
-      radio.write(&myData, sizeof(myData)); 
+      radio.write(&Cam, sizeof(Cam)); 
     }
   }
 #endif
@@ -135,10 +152,14 @@ struct_message myData;
   #define GREEN 4  // GPIO 4 (D2)
   #define BLUE 14  // GPIO 14 (D5)
 
+  volatile uint8_t pgm_mask = 0;
+  volatile uint8_t pvw_mask = 0;
+
   // Callback penerima ESP-NOW versi ESP8266 (Tipe argumen berbeda dengan ESP32)
   void OnDataRecv(uint8_t *mac, uint8_t *incomingData, uint8_t len) {
-    if (len >= sizeof(myData)) {
-      memcpy(&myData, incomingData, sizeof(myData));
+    if (len >= 2) {
+      pgm_mask = incomingData[0];
+      pvw_mask = incomingData[1];
     }
   }
 
@@ -150,6 +171,11 @@ struct_message myData;
     
     WiFi.mode(WIFI_STA);
     WiFi.disconnect(); // Membersihkan koneksi Wi-Fi bawaan
+
+    struct station_config conf;
+    wifi_station_get_config(&conf);
+    conf.bssid_set = 0;
+    wifi_station_get_config(&conf);
     
     // Inisialisasi ESP-NOW khusus ESP8266
     if (esp_now_init() != 0) return;
@@ -159,27 +185,21 @@ struct_message myData;
   }
 
   void loop() {
-    // Dekode status kamera dari data bitmask mask yang diterima
-    bool isPgm = (myData.pgm_mask & (1 << (CAM_ID - 1))) != 0;
-    bool isPvw = (myData.pvw_mask & (1 << (CAM_ID - 1))) != 0;
-
-    // Kendali Lampu Tally menggunakan digitalWrite standard (Lebih stabil untuk On/Off)
-    if (isPgm) {
-      digitalWrite(RED, HIGH);    // Merah Menyala jika LIVE (Program)
+    if (pgm_mask == 1) {
+      digitalWrite(RED, HIGH);
       digitalWrite(GREEN, LOW);
       digitalWrite(BLUE, LOW);
     } 
-    else if (isPvw) {
+    else if (pvw_mask == 1) {
       digitalWrite(RED, LOW);
-      digitalWrite(GREEN, HIGH);  // Hijau Menyala jika Preview / Standby
+      digitalWrite(GREEN, HIGH);
       digitalWrite(BLUE, LOW);
     } 
     else {
       digitalWrite(RED, LOW);
       digitalWrite(GREEN, LOW);
-      digitalWrite(BLUE, HIGH);   // Biru Menyala jika posisi Idle / Kamera tidak aktif
+      digitalWrite(BLUE, HIGH);
     }
-    delay(50);
   }
 #endif
 
@@ -285,6 +305,7 @@ void loop() {
 // ====================================================================
 // --- RX CONFIGURATION ANANO ---
 // ====================================================================
+
 #ifdef MODE_RX_NANO
 #include <SPI.h>
 #include <nRF24L01.h>
@@ -321,7 +342,7 @@ void setup() {
   digitalWrite(BLUE, LOW);
 
   // Inisialisasi Modul Wireless nRF24L01
-  if radio.begin() != ;
+  if radio.begin() =! ;
   
   radio.openReadingPipe(1, address);
   radio.setPALevel(RF24_PA_MAX); // Jangkauan maksimum
