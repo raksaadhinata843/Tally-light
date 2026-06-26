@@ -1,197 +1,211 @@
 #include <Arduino.h>
-#include <WiFi.h>
 
-const char* ssid = "";
-const char* password = "";
-
-typedef struct __attribute__((packed)) struct_message {
+// Deklarasi Tipe Data
+typedef struct __attribute__((packed)) {
     uint8_t pgm_mask;
     uint8_t pvw_mask;
-} struct_message;
-
-struct_message Cam;
+} TallyPacket;
 
 // ====================================================================
-// --- TX CONFIGURATION ESP32 (DUAL OUTPUT: ESP-NOW + nRF24L01) ---
+// --- TX CONFIGURATION ESP32(SwITCHER)---
 // ====================================================================
+#ifdef MODE_TX_ESP32(SWITCHER)
+#include <WiFi.h>
+#include <esp_now.h>
 
-#ifdef MODE_TX_ESP32
-  #include <esp_now.h>
-  #include <WiFi.h>
-  #include <SPI.h>
-  #include <nRF24L01.h>
-  #include <RF24.h>
+const uint8_t PGM_PINS[4] = {12, 13, 25, 26}; 
+const uint8_t PVW_PINS[4] = {27, 32, 33, 34};
+const int MODE_SWITCH_PIN = 14;
 
-  RF24 radio(4, 5); // CE, CSN
-  const byte nrfAddress[6] = "TALLY";
+uint8_t broadcastAddress[] = {0x24,0xD7,0xEB,0xCD,0x27,0x3D};
+bool modePC = true;
+bool lastButtonState = HIGH;
 
-  uint8_t rx1[] = {0x24, 0xD7, 0xEB, 0xCD, 0x27, 0x3D};
+TallyPacket txPacket;
 
-  const uint8_t PGM_PINS[4] = {12, 13, 25, 26}; // Kamera 1-4 PGM
-  const uint8_t PVW_PINS[4] = {27, 32, 33, 34}; // Kamera 1-4 PVW
+void setup() {
+  Serial.begin(115200);
+  WiFi.mode(WIFI_STA);
+  if (esp_now_init() != ESP_OK) return;
 
-  const uint8_t LED_MODE = 2; 
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+  peerInfo.channel = 0;  
+  peerInfo.encrypt = false;
+  esp_now_add_peer(&peerInfo);
+
+  pinMode(MODE_SWITCH_PIN, INPUT_PULLUP);
+
+  for(int i = 0; i < 4; i++) {
+    pinMode(PGM_PINS[i], INPUT_PULLUP);
+    pinMode(PVW_PINS[i], INPUT_PULLUP);
+  }
+}
+
+void checkModeButton() {
+  bool currentButtonState = digitalRead(MODE_SWITCH_PIN);
   
-  const unsigned long DEBOUNCE_MS = 50;
-  const unsigned long SERIAL_TIMEOUT = 2000;
-  const unsigned long SEND_INTERVAL = 100;
-
-  unsigned long lastSerialRx = 0;
-  unsigned long lastSend = 0;
-  bool vmixActive = false;
-
-  uint8_t readPhysicalMask(const uint8_t pins[4]) {
-    uint8_t m = 0;
-    for (uint8_t i = 0; i < 4; i++) {
-      if (digitalRead(pins[i]) == LOW) {
-        m |= (1 << i);
-      }
-    }
-    return m;
+  if (currentButtonState == LOW && lastButtonState == HIGH) {
+    modePC = !modePC;
+    Serial.println("Switch");
+    delay(200);
   }
+  lastButtonState = currentButtonState;
+}
 
-  void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-    for (int i = 0; i < 6; i++) {
-      Serial.printf("%02X", mac_addr[i]);
-      if (i < 5) Serial.println(";");
-    }
-    if (status == ESP_NOW_SEND_SUCCESS) {
-      Serial.println("0");
-    } else {
-      Serial.println("1");
-    }
+void updateManualData() {
+  txPacket.pgm_mask = 0;
+  txPacket.pvw_mask = 0;
+  for(int i = 0; i < 4; i++) {
+    if (digitalRead(PGM_PINS[i]) == LOW) txPacket.pgm_mask |= (1 << i);
+    if (digitalRead(PVW_PINS[i]) == LOW) txPacket.pvw_mask |= (1 << i);
   }
+}
 
-  void setup() {
-    Serial.begin(115200);
-    
-    // --- Inisialisasi ESP-NOW ---
-    WiFi.mode(WIFI_STA);
-    WiFi.disconnect();
-    if (esp_now_init() == ESP_OK) {
-      esp_now_register_send_cb(OnDataSent);
-      esp_now_peer_info_t peerInfo = {};
-      memcpy(peerInfo.peer_addr, rx1, 6);
-      peerInfo.channel = 1;  
-      peerInfo.encrypt = false;
-      esp_now_add_peer(&peerInfo);
-      
-    }
+void loop() {
+  checkModeButton();
 
-    // --- Inisialisasi nRF24L01 ---
-    if (radio.begin()) {
-      radio.openWritingPipe(nrfAddress);
-      radio.setPALevel(RF24_PA_MAX);
-      radio.stopListening();
+  if (modePC) {
+    if (Serial.available() >= 2) {
+      txPacket.pgm_mask = Serial.read();
+      txPacket.pvw_mask = Serial.read();
     }
-
-    // Inisialisasi Pin Input Switcher Fisik
-    for (uint8_t i = 0; i < 4; i++) {
-      pinMode(PGM_PINS[i], INPUT_PULLUP);
-      if(PVW_PINS[i] == 34) {
-        pinMode(PVW_PINS[i], INPUT);
-      } else {
-        pinMode(PVW_PINS[i], INPUT_PULLUP);
-      }
-    }
-    pinMode(LED_MODE, OUTPUT);
+  } else {
+    updateManualData();
   }
-
-  void loop() {
-    vmixActive = (millis() - lastSerialRx) <= SERIAL_TIMEOUT;
-    digitalWrite(LED_MODE, vmixActive ? HIGH : LOW);
-
-    // Baca vMix Serial
-    if (Serial.available() > 0) {
-      String data = Serial.readStringUntil('\n');
-      data.trim();
-      int commaIndex = data.indexOf(',');
-
-      if (commaIndex > 0) {
-        Cam.pgm_mask = (uint8_t)data.substring(0, commaIndex).toInt();
-        Cam.pvw_mask = (uint8_t)data.substring(commaIndex + 1).toInt();
-        lastSerialRx = millis(); 
-      }
-    }
-
-    // Baca Fisik DB15
-    if (!vmixActive) {
-      static unsigned long lastPhysicalRead = 0;
-      if (millis() - lastPhysicalRead >= DEBOUNCE_MS) {
-        lastPhysicalRead = millis();
-        Cam.pgm_mask = readPhysicalMask(PGM_PINS);
-        Cam.pvw_mask = readPhysicalMask(PVW_PINS);
-      }
-    }
-
-    if (millis() - lastSend >= SEND_INTERVAL) {
-      lastSend = millis();
-      
-      // 1. ESP-NOW
-      uint8_t payload[2];
-      payload[0] = Cam.pgm_mask;
-      payload[1] = Cam.pvw_mask;
-      esp_now_send(rx1, payload, 2);
-
-      // 2. nRF24L01
-      radio.write(&Cam, sizeof(Cam)); 
-    }
-  }
+  esp_now_send(broadcastAddress, (uint8_t*)&txPacket, sizeof(txPacket));
+  delay(50);
+}
 #endif
 
 // ====================================================================
-// --- TX CONFIGURATION ESP32 (DUAL OUTPUT: ESP-NOW + nRF24L01) ---
+// --- RX CONFIGURATION ESP8266UDP---
+// ====================================================================
+#ifdef MODE_RX_ESP8266UDP 
+#include <ESP8266WiFi.h>
+#include <espnow.h>
+
+#define RED 5    // D1
+#define GREEN 4  // D2
+#define BLUE 14  // D5
+
+// Tentukan ID Tally ini (Misal ID 1, ID 2, dst)
+const uint8_t CAM_ID = 1; 
+
+volatile uint8_t pgm_mask = 0;
+volatile uint8_t pvw_mask = 0;
+
+TallyPacket rxPacket;
+
+void OnDataRecv(uint8_t *mac, uint8_t *data, uint8_t len) {
+    if (len == sizeof(TallyPacket)) {
+        memcpy(&rxPacket, data, sizeof(TallyPacket));
+    }
+}
+
+void setup() {
+    pinMode(RED, OUTPUT);
+    pinMode(GREEN, OUTPUT);
+    pinMode(BLUE, OUTPUT);
+    
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect();
+    
+    if (esp_now_init() != 0) return;
+    
+    esp_now_set_self_role(ESP_NOW_ROLE_SLAVE);
+    esp_now_register_recv_cb(OnDataRecv);
+}
+
+void loop() {
+    // Gunakan Bitwise untuk cek apakah ID ini ada di dalam mask
+    // (1 << (CAM_ID - 1)) akan menghasilkan bit yang sesuai untuk ID tersebut
+    bool isPgm = (rxPacket.pgm_mask & (1 << (CAM_ID - 1)));
+    bool isPvw = (rxPacket.pvw_mask & (1 << (CAM_ID - 1)));
+
+    if (isPgm) {
+        // Status PGM (Merah)
+        digitalWrite(RED, HIGH);
+        digitalWrite(GREEN, LOW);
+        digitalWrite(BLUE, LOW);
+    } else if (isPvw) {
+        // Status PVW (Hijau)
+        digitalWrite(RED, LOW);
+        digitalWrite(GREEN, HIGH);
+        digitalWrite(BLUE, LOW);
+    } else {
+        // Status IDLE (Biru)
+        digitalWrite(RED, LOW);
+        digitalWrite(GREEN, LOW);
+        digitalWrite(BLUE, HIGH);
+    }
+}
+#endif
+
+// ====================================================================
+// --- TX CONFIGURATION ESP32(VMIX) (DUAL OUTPUT: ESP-NOW + nRF24L01) ---
 // ====================================================================
 
-#ifdef MODE_TX_ESPUDP
-#include <WiFiUdp.h>
+#ifdef MODE_TX_ESP32(VMIX)
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <esp_now.h>
 
-IPAddress TIP[] = {
-  IPAddress(192, 168, 1, 101), 
-  IPAddress(192, 168, 1, 102)
-};
+// --- KONFIGURASI ---
+const char* ssid = "TP-Link_9BFE"; 
+const char* password = "05674411";
+const char* vmixApi = "http://192.168.1.100:58088/api/"; // IP vMix kamu
 
-WiFiUDP udp;
+uint8_t broadcastAddress[] = {0x24, 0xD7, 0xEB, 0xCD, 0x27, 0x3D}; // RX1
+
+TallyPacket txPacket;
 
 void setup() {
   Serial.begin(115200);
   WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
   
-  while (WiFi.status() != WL_CONNECTED) { delay(500); }
+  if (esp_now_init() != ESP_OK) return;
   
-  udp.begin(8888);
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+  peerInfo.channel = 0;
+  peerInfo.encrypt = false;
+  esp_now_add_peer(&peerInfo);
 }
 
-void loop () {
-  Cam.pgm_mask = ;
-
-  
-}
-#endif
-
-// ====================================================================
-// --- RX CONFIGURATION ESP32 UDP ---
-// ====================================================================
-
-#ifdef MODE_RX_ESPUDP
-#include <WiFiUdp.h>
-
-IPAddress local_ip ();
-IPAddress gateway ();
-IPAddress subnet ();
-
-WiFiUDP udp;
-
-void setup () {
-  Serial.begin(115200);
-
-  WiFi.config(local_ip, gateway, subnet);
-  WiFi.begin(ssid, password);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
+void loop() {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(vmixApi);
+    int httpCode = http.GET();
+    
+    if (httpCode == 200) {
+      String payload = http.getString();
+      
+      // Cari posisi <active>1</active>
+      // Kita ambil angka di antara tag tersebut
+      int startActive = payload.indexOf("<active>") + 8;
+      int endActive = payload.indexOf("</active>");
+      String activeStr = payload.substring(startActive, endActive);
+      int active = activeStr.toInt();
+      
+      // Cari posisi <preview>2</preview>
+      int startPreview = payload.indexOf("<preview>") + 9;
+      int endPreview = payload.indexOf("</preview>");
+      String previewStr = payload.substring(startPreview, endPreview);
+      int preview = previewStr.toInt();
+      
+      // LOGIC MASKING (Sama seperti sebelumnya)
+      txPacket.pgm_mask = (active > 0) ? (1 << (active - 1)) : 0;
+      txPacket.pvw_mask = (preview > 0) ? (1 << (preview - 1)) : 0;
+      
+      // KIRIM KE ESP-NOW
+      esp_now_send(broadcastAddress, (uint8_t*)&txPacket, sizeof(txPacket));
+      }
+    http.end();
   }
-  udp.begin(8888)
+  delay(100); // Latensi vMix API biasanya di kisaran 100ms, ini sudah sangat cukup
 }
 #endif
 
@@ -203,9 +217,6 @@ void setup () {
   #include <ESP8266WiFi.h>
   #include <espnow.h>
 
-  // Isikan nomor kamera untuk board penerima ini (Misal Lampu Kamera 1)
-  const uint8_t CAM_ID = 1; 
-
   // Pin Output LED Tally pada ESP8266 (Ganti nomor pin jika diinginkan)
   #define RED 5    // GPIO 5 (D1)
   #define GREEN 4  // GPIO 4 (D2)
@@ -215,7 +226,7 @@ void setup () {
   volatile uint8_t pvw_mask = 0;
 
   // Callback penerima ESP-NOW versi ESP8266 (Tipe argumen berbeda dengan ESP32)
-  void OnDataRecv(uint8_t *mac, uint8_t *incomingData, uint8_t len) {
+  void OnDataRecv(uint8_t *mac_addr, uint8_t *incomingData, uint8_t len) {
     if (len >= 2) {
       pgm_mask = incomingData[0];
       pvw_mask = incomingData[1];
@@ -230,12 +241,7 @@ void setup () {
     
     WiFi.mode(WIFI_STA);
     WiFi.disconnect(); // Membersihkan koneksi Wi-Fi bawaan
-
-    struct station_config conf;
-    wifi_station_get_config(&conf);
-    conf.bssid_set = 0;
-    wifi_station_get_config(&conf);
-    
+    wifi_set_channel(1); // Pastikan channel sama dengan TX
     // Inisialisasi ESP-NOW khusus ESP8266
     if (esp_now_init() != 0) return;
     
@@ -243,23 +249,23 @@ void setup () {
     esp_now_register_recv_cb(OnDataRecv);
   }
 
-  void loop() {
-    if (pgm_mask == 1) {
-      digitalWrite(RED, HIGH);
-      digitalWrite(GREEN, LOW);
-      digitalWrite(BLUE, LOW);
-    } 
-    else if (pvw_mask == 1) {
-      digitalWrite(RED, LOW);
-      digitalWrite(GREEN, HIGH);
-      digitalWrite(BLUE, LOW);
-    } 
-    else {
-      digitalWrite(RED, LOW);
-      digitalWrite(GREEN, LOW);
-      digitalWrite(BLUE, HIGH);
-    }
+void loop() {
+
+  if (pgm_mask == 1) {
+    digitalWrite(RED, HIGH);
+    digitalWrite(GREEN, LOW);
+    digitalWrite(BLUE, LOW);
+  } else if (pvw_mask == 1) {
+    digitalWrite(RED, LOW);
+    digitalWrite(GREEN, HIGH);
+    digitalWrite(BLUE, LOW);
+  } else {
+    digitalWrite(RED, LOW);
+    digitalWrite(GREEN, LOW);
+    digitalWrite(BLUE, HIGH);
   }
+}
+
 #endif
 
 // ====================================================================
