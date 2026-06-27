@@ -17,7 +17,11 @@ const uint8_t PGM_PINS[4] = {12, 13, 25, 26};
 const uint8_t PVW_PINS[4] = {27, 32, 33, 34};
 const int MODE_SWITCH_PIN = 14;
 
-uint8_t broadcastAddress[] = {0x24,0xD7,0xEB,0xCD,0x27,0x3D};
+uint8_t broadcastAddress[] = {
+  {0x24,0xD7,0xEB,0xCD,0x27,0x3D},
+  {0x24,0xD7,0xEB,0xCD,0x27,0x4D},
+  {0x24,0xD7,0xEB,0xCD,0x27,0x5D}
+};
 bool modePC = true;
 bool lastButtonState = HIGH;
 
@@ -28,17 +32,16 @@ void setup() {
   WiFi.mode(WIFI_STA);
   if (esp_now_init() != ESP_OK) return;
 
-  esp_now_peer_info_t peerInfo = {};
-  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-  peerInfo.channel = 0;  
-  peerInfo.encrypt = false;
-  esp_now_add_peer(&peerInfo);
-
   pinMode(MODE_SWITCH_PIN, INPUT_PULLUP);
 
   for(int i = 0; i < 4; i++) {
     pinMode(PGM_PINS[i], INPUT_PULLUP);
     pinMode(PVW_PINS[i], INPUT_PULLUP);
+    esp_now_peer_info_t peerInfo = {};
+    memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+    peerInfo.channel = 0;  
+    peerInfo.encrypt = false;
+    esp_now_add_peer(&peerInfo);
   }
 }
 
@@ -73,7 +76,7 @@ void loop() {
   } else {
     updateManualData();
   }
-  esp_now_send(broadcastAddress, (uint8_t*)&txPacket, sizeof(txPacket));
+  esp_now_send(NULL, (uint8_t*)&txPacket, sizeof(txPacket));
   delay(50);
 }
 #endif
@@ -149,68 +152,9 @@ void loop() {
 #endif
 
 // ====================================================================
-// --- RX CONFIGURATION ESP8266 ---
+// --- RX CONFIGURATION ESP8266---
 // ====================================================================
-
-#ifdef MODE_RX_ESP8266 
-  #include <ESP8266WiFi.h>
-  #include <espnow.h>
-
-  // Pin Output LED Tally pada ESP8266 (Ganti nomor pin jika diinginkan)
-  #define RED 5    // GPIO 5 (D1)
-  #define GREEN 4  // GPIO 4 (D2)
-  #define BLUE 14  // GPIO 14 (D5)
-
-  volatile uint8_t pgm_mask = 0;
-  volatile uint8_t pvw_mask = 0;
-
-  // Callback penerima ESP-NOW versi ESP8266 (Tipe argumen berbeda dengan ESP32)
-  void OnDataRecv(uint8_t *mac_addr, uint8_t *incomingData, uint8_t len) {
-    if (len >= 2) {
-      pgm_mask = incomingData[0];
-      pvw_mask = incomingData[1];
-    }
-  }
-
-  void setup() {
-    Serial.begin(115200);
-    pinMode(RED, OUTPUT); 
-    pinMode(BLUE, OUTPUT); 
-    pinMode(GREEN, OUTPUT);
-    
-    WiFi.mode(WIFI_STA);
-    WiFi.disconnect(); // Membersihkan koneksi Wi-Fi bawaan
-    wifi_set_channel(1); // Pastikan channel sama dengan TX
-    // Inisialisasi ESP-NOW khusus ESP8266
-    if (esp_now_init() != 0) return;
-    
-    esp_now_set_self_role(ESP_NOW_ROLE_SLAVE);
-    esp_now_register_recv_cb(OnDataRecv);
-  }
-
-void loop() {
-
-  if (pgm_mask == 1) {
-    digitalWrite(RED, HIGH);
-    digitalWrite(GREEN, LOW);
-    digitalWrite(BLUE, LOW);
-  } else if (pvw_mask == 1) {
-    digitalWrite(RED, LOW);
-    digitalWrite(GREEN, HIGH);
-    digitalWrite(BLUE, LOW);
-  } else {
-    digitalWrite(RED, LOW);
-    digitalWrite(GREEN, LOW);
-    digitalWrite(BLUE, HIGH);
-  }
-}
-
-#endif
-
-// ====================================================================
-// --- RX CONFIGURATION ESP8266UDP---
-// ====================================================================
-#ifdef MODE_RX_ESP8266UDP 
+#ifdef MODE_RX_ESP8266
 #include <ESP8266WiFi.h>
 #include <espnow.h>
 
@@ -268,6 +212,66 @@ void loop() {
         digitalWrite(GREEN, LOW);
         digitalWrite(BLUE, HIGH);
     }
+}
+#endif
+
+// ====================================================================
+// --- RX CONFIGURATION ESP8266(WS)---
+// ====================================================================
+#ifdef MODE_RX_ESP8266_WS
+#include <ESP8266WiFi.h>
+#include <espnow.h>
+#include <Adafruit_NeoPixel.h>
+
+#define PIN        D4  
+#define NUMPIXELS  1
+
+// Tentukan ID Tally ini (Misal ID 1, ID 2, dst)
+const uint8_t CAM_ID = 1; 
+
+volatile uint8_t pgm_mask = 0;
+volatile uint8_t pvw_mask = 0;
+
+Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
+
+TallyPacket rxPacket;
+
+void OnDataRecv(uint8_t *mac, uint8_t *data, uint8_t len) {
+    if (len == sizeof(TallyPacket)) {
+        memcpy(&rxPacket, data, sizeof(TallyPacket));
+    }
+}
+
+void setup() {
+    pixels.begin();
+    pixels.setBrightness(50);
+    
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect();
+    
+    if (esp_now_init() != 0) return;
+    
+    esp_now_set_self_role(ESP_NOW_ROLE_SLAVE);
+    esp_now_register_recv_cb(OnDataRecv);
+}
+
+void loop() {
+    // Gunakan Bitwise untuk cek apakah ID ini ada di dalam mask
+    // (1 << (CAM_ID - 1)) akan menghasilkan bit yang sesuai untuk ID tersebut
+    bool isPgm = (rxPacket.pgm_mask & (1 << (CAM_ID - 1)));
+    bool isPvw = (rxPacket.pvw_mask & (1 << (CAM_ID - 1)));
+
+    pixels.clear();
+
+    if (isPgm) {
+        pixels.setPixelColor(0, pixels.Color(255, 0, 0));
+    } else if (isPvw) {
+        pixels.setPixelColor(0, pixels.Color(0, 255, 0));
+    } else {
+        pixels.setPixelColor(0, pixels.Color(0, 0, 255));
+    }
+
+    pixels.show();
 }
 #endif
 
