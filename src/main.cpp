@@ -9,7 +9,7 @@ typedef struct __attribute__((packed)) {
 // ====================================================================
 // --- TX CONFIGURATION ESP32(SwITCHER)---
 // ====================================================================
-#ifdef MODE_TX_ESP32(SWITCHER)
+#ifdef MODE_TX_SWITCHER32
 #include <WiFi.h>
 #include <esp_now.h>
 
@@ -79,6 +79,135 @@ void loop() {
 #endif
 
 // ====================================================================
+// --- TX CONFIGURATION ESP32(ROUTER) (DUAL OUTPUT: ESP-NOW + nRF24L01) ---
+// ====================================================================
+
+#ifdef MODE_TX_ESP32ROUTER
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <esp_now.h>
+
+// --- KONFIGURASI ---
+const char* ssid = "TP-Link_9BFE"; 
+const char* password = "05674411";
+const char* ROUTERApi = "http://192.168.1.100:58088/api/"; // IP ROUTER kamu
+
+uint8_t broadcastAddress[] = {0x24, 0xD7, 0xEB, 0xCD, 0x27, 0x3D}; // RX1
+
+TallyPacket txPacket;
+HTTPClient http;
+
+void setup() {
+  Serial.begin(115200);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
+  http.setReuse(true);
+  http.setTimeout(100);
+
+  if (esp_now_init() != ESP_OK) return;
+  
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+  peerInfo.channel = 0;
+  peerInfo.encrypt = false;
+  esp_now_add_peer(&peerInfo);
+}
+
+void loop() {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(vmixApi);
+    int httpCode = http.GET();
+    
+    if (httpCode == 200) {
+      String payload = http.getString();
+      
+      // Cari posisi <active>1</active>
+      // Kita ambil angka di antara tag tersebut
+      int startActive = payload.indexOf("<active>") + 8;
+      int endActive = payload.indexOf("</active>");
+      String activeStr = payload.substring(startActive, endActive);
+      int active = activeStr.toInt();
+      
+      // Cari posisi <preview>2</preview>
+      int startPreview = payload.indexOf("<preview>") + 9;
+      int endPreview = payload.indexOf("</preview>");
+      String previewStr = payload.substring(startPreview, endPreview);
+      int preview = previewStr.toInt();
+      
+      // LOGIC MASKING (Sama seperti sebelumnya)
+      txPacket.pgm_mask = (active > 0) ? (1 << (active - 1)) : 0;
+      txPacket.pvw_mask = (preview > 0) ? (1 << (preview - 1)) : 0;
+      
+      // KIRIM KE ESP-NOW
+      esp_now_send(broadcastAddress, (uint8_t*)&txPacket, sizeof(txPacket));
+      }
+    http.end();
+  }
+  delay(50); // Latensi vMix API biasanya di kisaran 100ms, ini sudah sangat cukup
+}
+#endif
+
+// ====================================================================
+// --- RX CONFIGURATION ESP8266 ---
+// ====================================================================
+
+#ifdef MODE_RX_ESP8266 
+  #include <ESP8266WiFi.h>
+  #include <espnow.h>
+
+  // Pin Output LED Tally pada ESP8266 (Ganti nomor pin jika diinginkan)
+  #define RED 5    // GPIO 5 (D1)
+  #define GREEN 4  // GPIO 4 (D2)
+  #define BLUE 14  // GPIO 14 (D5)
+
+  volatile uint8_t pgm_mask = 0;
+  volatile uint8_t pvw_mask = 0;
+
+  // Callback penerima ESP-NOW versi ESP8266 (Tipe argumen berbeda dengan ESP32)
+  void OnDataRecv(uint8_t *mac_addr, uint8_t *incomingData, uint8_t len) {
+    if (len >= 2) {
+      pgm_mask = incomingData[0];
+      pvw_mask = incomingData[1];
+    }
+  }
+
+  void setup() {
+    Serial.begin(115200);
+    pinMode(RED, OUTPUT); 
+    pinMode(BLUE, OUTPUT); 
+    pinMode(GREEN, OUTPUT);
+    
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect(); // Membersihkan koneksi Wi-Fi bawaan
+    wifi_set_channel(1); // Pastikan channel sama dengan TX
+    // Inisialisasi ESP-NOW khusus ESP8266
+    if (esp_now_init() != 0) return;
+    
+    esp_now_set_self_role(ESP_NOW_ROLE_SLAVE);
+    esp_now_register_recv_cb(OnDataRecv);
+  }
+
+void loop() {
+
+  if (pgm_mask == 1) {
+    digitalWrite(RED, HIGH);
+    digitalWrite(GREEN, LOW);
+    digitalWrite(BLUE, LOW);
+  } else if (pvw_mask == 1) {
+    digitalWrite(RED, LOW);
+    digitalWrite(GREEN, HIGH);
+    digitalWrite(BLUE, LOW);
+  } else {
+    digitalWrite(RED, LOW);
+    digitalWrite(GREEN, LOW);
+    digitalWrite(BLUE, HIGH);
+  }
+}
+
+#endif
+
+// ====================================================================
 // --- RX CONFIGURATION ESP8266UDP---
 // ====================================================================
 #ifdef MODE_RX_ESP8266UDP 
@@ -140,132 +269,6 @@ void loop() {
         digitalWrite(BLUE, HIGH);
     }
 }
-#endif
-
-// ====================================================================
-// --- TX CONFIGURATION ESP32(VMIX) (DUAL OUTPUT: ESP-NOW + nRF24L01) ---
-// ====================================================================
-
-#ifdef MODE_TX_ESP32(VMIX)
-#include <WiFi.h>
-#include <HTTPClient.h>
-#include <esp_now.h>
-
-// --- KONFIGURASI ---
-const char* ssid = "TP-Link_9BFE"; 
-const char* password = "05674411";
-const char* vmixApi = "http://192.168.1.100:58088/api/"; // IP vMix kamu
-
-uint8_t broadcastAddress[] = {0x24, 0xD7, 0xEB, 0xCD, 0x27, 0x3D}; // RX1
-
-TallyPacket txPacket;
-
-void setup() {
-  Serial.begin(115200);
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
-  
-  if (esp_now_init() != ESP_OK) return;
-  
-  esp_now_peer_info_t peerInfo = {};
-  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-  peerInfo.channel = 0;
-  peerInfo.encrypt = false;
-  esp_now_add_peer(&peerInfo);
-}
-
-void loop() {
-  if (WiFi.status() == WL_CONNECTED) {
-    HTTPClient http;
-    http.begin(vmixApi);
-    int httpCode = http.GET();
-    
-    if (httpCode == 200) {
-      String payload = http.getString();
-      
-      // Cari posisi <active>1</active>
-      // Kita ambil angka di antara tag tersebut
-      int startActive = payload.indexOf("<active>") + 8;
-      int endActive = payload.indexOf("</active>");
-      String activeStr = payload.substring(startActive, endActive);
-      int active = activeStr.toInt();
-      
-      // Cari posisi <preview>2</preview>
-      int startPreview = payload.indexOf("<preview>") + 9;
-      int endPreview = payload.indexOf("</preview>");
-      String previewStr = payload.substring(startPreview, endPreview);
-      int preview = previewStr.toInt();
-      
-      // LOGIC MASKING (Sama seperti sebelumnya)
-      txPacket.pgm_mask = (active > 0) ? (1 << (active - 1)) : 0;
-      txPacket.pvw_mask = (preview > 0) ? (1 << (preview - 1)) : 0;
-      
-      // KIRIM KE ESP-NOW
-      esp_now_send(broadcastAddress, (uint8_t*)&txPacket, sizeof(txPacket));
-      }
-    http.end();
-  }
-  delay(100); // Latensi vMix API biasanya di kisaran 100ms, ini sudah sangat cukup
-}
-#endif
-
-// ====================================================================
-// --- RX CONFIGURATION ESP8266 ---
-// ====================================================================
-
-#ifdef MODE_RX_ESP8266 
-  #include <ESP8266WiFi.h>
-  #include <espnow.h>
-
-  // Pin Output LED Tally pada ESP8266 (Ganti nomor pin jika diinginkan)
-  #define RED 5    // GPIO 5 (D1)
-  #define GREEN 4  // GPIO 4 (D2)
-  #define BLUE 14  // GPIO 14 (D5)
-
-  volatile uint8_t pgm_mask = 0;
-  volatile uint8_t pvw_mask = 0;
-
-  // Callback penerima ESP-NOW versi ESP8266 (Tipe argumen berbeda dengan ESP32)
-  void OnDataRecv(uint8_t *mac_addr, uint8_t *incomingData, uint8_t len) {
-    if (len >= 2) {
-      pgm_mask = incomingData[0];
-      pvw_mask = incomingData[1];
-    }
-  }
-
-  void setup() {
-    Serial.begin(115200);
-    pinMode(RED, OUTPUT); 
-    pinMode(BLUE, OUTPUT); 
-    pinMode(GREEN, OUTPUT);
-    
-    WiFi.mode(WIFI_STA);
-    WiFi.disconnect(); // Membersihkan koneksi Wi-Fi bawaan
-    wifi_set_channel(1); // Pastikan channel sama dengan TX
-    // Inisialisasi ESP-NOW khusus ESP8266
-    if (esp_now_init() != 0) return;
-    
-    esp_now_set_self_role(ESP_NOW_ROLE_SLAVE);
-    esp_now_register_recv_cb(OnDataRecv);
-  }
-
-void loop() {
-
-  if (pgm_mask == 1) {
-    digitalWrite(RED, HIGH);
-    digitalWrite(GREEN, LOW);
-    digitalWrite(BLUE, LOW);
-  } else if (pvw_mask == 1) {
-    digitalWrite(RED, LOW);
-    digitalWrite(GREEN, HIGH);
-    digitalWrite(BLUE, LOW);
-  } else {
-    digitalWrite(RED, LOW);
-    digitalWrite(GREEN, LOW);
-    digitalWrite(BLUE, HIGH);
-  }
-}
-
 #endif
 
 // ====================================================================
