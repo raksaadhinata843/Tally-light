@@ -17,10 +17,11 @@ const uint8_t PGM_PINS[4] = {12, 13, 25, 26};
 const uint8_t PVW_PINS[4] = {27, 32, 33, 34};
 const int MODE_SWITCH_PIN = 14;
 
-uint8_t broadcastAddress[] = {
+uint8_t broadcastAddress[4][6] = {
   {0x24,0xD7,0xEB,0xCD,0x27,0x3D},
   {0x24,0xD7,0xEB,0xCD,0x27,0x4D},
-  {0x24,0xD7,0xEB,0xCD,0x27,0x5D}
+  {0x24,0xD7,0xEB,0xCD,0x27,0x5D},
+  {0x24,0xD7,0xEB,0xCD,0x27,0x6D}
 };
 bool modePC = true;
 bool lastButtonState = HIGH;
@@ -38,7 +39,7 @@ void setup() {
     pinMode(PGM_PINS[i], INPUT_PULLUP);
     pinMode(PVW_PINS[i], INPUT_PULLUP);
     esp_now_peer_info_t peerInfo = {};
-    memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+    memcpy(peerInfo.peer_addr, broadcastAddress[i], 6);
     peerInfo.channel = 0;  
     peerInfo.encrypt = false;
     esp_now_add_peer(&peerInfo);
@@ -165,10 +166,10 @@ void loop() {
 // Tentukan ID Tally ini (Misal ID 1, ID 2, dst)
 const uint8_t CAM_ID = 1; 
 
+TallyPacket rxPacket;
+
 volatile uint8_t pgm_mask = 0;
 volatile uint8_t pvw_mask = 0;
-
-TallyPacket rxPacket;
 
 void OnDataRecv(uint8_t *mac, uint8_t *data, uint8_t len) {
     if (len == sizeof(TallyPacket)) {
