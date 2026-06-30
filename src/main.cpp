@@ -97,7 +97,7 @@ WiFiUDP udp;
 
 IPAddress local_IP(192, 168, 0, 5);
 IPAddress gateway(192, 168, 0, 1);
-IPAddress subnet(192, 168, 0, 255);
+IPAddress subnet(255, 255, 255, 0);
 
 const uint8_t PGM_PINS[4] = {12, 13, 25, 26}; 
 const uint8_t PVW_PINS[4] = {27, 32, 33, 34};
@@ -106,8 +106,8 @@ TallyPacket txPacket;
 
 void setup() {
   Serial.begin(115200);
-  WiFi.begin(ssid, password);
   WiFi.config(local_IP, gateway, subnet);
+  WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) { 
     delay(500); Serial.print("."); }
 
