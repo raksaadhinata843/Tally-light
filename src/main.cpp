@@ -490,11 +490,10 @@ void setup() {
     
   WiFi.begin(ssid, password);
 
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nWiFi Connected!");
-    Serial.print("IP: ");
-    Serial.println(WiFi.localIP());
-  }
+  while (WiFi.status() != WL_CONNECTED) {
+  delay(500);
+  Serial.print("."); // Kamu bakal lihat titik-titik di Serial Monitor
+}
     
   udp.begin(udpPort);
 }
