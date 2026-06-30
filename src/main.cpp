@@ -269,7 +269,7 @@ void loop() {
 #define BLUE 27
 
 // Tentukan ID Tally ini (0, 1, 2, 3)
-const uint8_t CAM_ID = 0; 
+const uint8_t CAM_ID = 1; 
 
 TallyPacket rxPacket;
 
@@ -302,8 +302,8 @@ void loop() {
 
         // LOGIKA BITWISE YANG BENAR:
         // Gunakan operator '&' untuk men-masking bit spesifik
-        bool isPgm = (rxPacket.pgm_mask & (1 << CAM_ID));
-        bool isPvw = (rxPacket.pvw_mask & (1 << CAM_ID));
+        bool isPgm = (rxPacket.pgm_mask & (1 << (CAM_ID - 1)));
+        bool isPvw = (rxPacket.pvw_mask & (1 << (CAM_ID - 1)));
 
         if (isPgm) {
             Serial.println("Red");
@@ -321,6 +321,81 @@ void loop() {
             digitalWrite(GREEN, LOW);
             digitalWrite(BLUE, HIGH);
         }
+    }
+}
+#endif
+
+// ====================================================================
+// --- RX CONFIGURATION ESP32WS (UDP)---
+// ====================================================================
+#ifdef MODE_RX_ESP32UDP_WS
+#include <WiFi.h>
+#include <WiFiUdp.h>
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
+#include <Adafruit_NeoPixel.h>
+
+#define PIN        4
+#define NUMPIXELS  1
+
+// Tentukan ID Tally ini (0, 1, 2, 3)
+const uint8_t CAM_ID = 1; 
+
+TallyPacket rxPacket;
+
+const char* ssid = "Rec.709";
+const char* password = "malammalam";
+const int udpPort = 8888;
+WiFiUDP udp;
+
+volatile uint8_t pgm_mask = 0;
+volatile uint8_t pvw_mask = 0;
+
+Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
+
+void setup() {
+  Serial.begin(115200);
+  pixels.begin();
+  pixels.setBrightness(50);
+
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+    
+  WiFi.begin(ssid, password);
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nWiFi Connected!");
+    Serial.print("IP: ");
+    Serial.println(WiFi.localIP());
+  }
+    
+  udp.begin(udpPort);
+}
+
+void loop() {
+    int packetSize = udp.parsePacket();
+    if (packetSize == sizeof(TallyPacket)) {
+        TallyPacket rxPacket;
+        udp.read((unsigned char*)&rxPacket, sizeof(TallyPacket));
+
+        // LOGIKA BITWISE YANG BENAR:
+        // Gunakan operator '&' untuk men-masking bit spesifik
+        bool isPgm = (rxPacket.pgm_mask & (1 << (CAM_ID - 1)));
+        bool isPvw = (rxPacket.pvw_mask & (1 << (CAM_ID - 1)));
+
+        pixels.clear();
+
+        if (isPgm) {
+            pixels.setPixelColor(0, pixels.Color(255, 0, 0));
+            Serial.print("RED");
+        } else if (isPvw) {
+          Serial.print("GREEN");
+            pixels.setPixelColor(0, pixels.Color(0, 255, 0));
+        } else {
+          Serial.print("BLUE");
+            pixels.setPixelColor(0, pixels.Color(0, 0, 255));
+        }
+
+        pixels.show();
     }
 }
 #endif
