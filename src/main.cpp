@@ -110,6 +110,11 @@ void setup() {
     delay(500); Serial.print("."); }
 
   udp.begin(udpPort);
+
+  for (int i = 0; i < 4; i++) {
+        pinMode(PGM_PINS[i], INPUT_PULLUP);
+        pinMode(PVW_PINS[i], INPUT_PULLUP);
+    }
 }
 
 void loop() {
@@ -256,6 +261,8 @@ void loop() {
 #ifdef MODE_RX_ESP32UDP
 #include <WiFi.h>
 #include <WiFiUdp.h>
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 
 #define RED 25
 #define GREEN 26
@@ -274,20 +281,17 @@ WiFiUDP udp;
 volatile uint8_t pgm_mask = 0;
 volatile uint8_t pvw_mask = 0;
 
-void OnDataRecv(uint8_t *mac, uint8_t *data, uint8_t len) {
-    if (len == sizeof(TallyPacket)) {
-        memcpy(&rxPacket, data, sizeof(TallyPacket));
-    }
-}
-
 void setup() {
-    pinMode(RED, OUTPUT);
-    pinMode(GREEN, OUTPUT);
-    pinMode(BLUE, OUTPUT);
+  Serial.begin(115200);
+  pinMode(RED, OUTPUT);
+  pinMode(GREEN, OUTPUT);
+  pinMode(BLUE, OUTPUT);
+
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
     
-    WiFi.begin(ssid, password);
+  WiFi.begin(ssid, password);
     
-    udp.begin(udpPort);
+  udp.begin(udpPort);
 }
 
 void loop() {
@@ -302,17 +306,17 @@ void loop() {
         bool isPvw = (rxPacket.pvw_mask & (1 << CAM_ID));
 
         if (isPgm) {
-            // PGM (Merah) - Prioritas utama
+            Serial.println("Red");
             digitalWrite(RED, HIGH);
             digitalWrite(GREEN, LOW);
             digitalWrite(BLUE, LOW);
         } else if (isPvw) {
-            // PVW (Hijau)
+            Serial.println("Green");
             digitalWrite(RED, LOW);
             digitalWrite(GREEN, HIGH);
             digitalWrite(BLUE, LOW);
         } else {
-            // IDLE (Biru)
+            Serial.println("Blue");
             digitalWrite(RED, LOW);
             digitalWrite(GREEN, LOW);
             digitalWrite(BLUE, HIGH);
