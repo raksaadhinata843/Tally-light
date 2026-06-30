@@ -95,7 +95,7 @@ const char* password = "malammalam";
 const int udpPort = 8888;
 WiFiUDP udp;
 
-IPAddress local_IP(192, 168, 0, 5);
+IPAddress local_IP(192, 168, 0, 4);
 IPAddress gateway(192, 168, 0, 1);
 IPAddress subnet(255, 255, 255, 0);
 
@@ -491,11 +491,18 @@ void setup() {
   WiFi.begin(ssid, password);
 
   while (WiFi.status() != WL_CONNECTED) {
-  delay(500);
+  delay(2000);
+  pixels.clear();
+  pixels.setPixelColor(0, pixels.Color(0, 0, 255));
+  pixels.show();
   Serial.print("."); // Kamu bakal lihat titik-titik di Serial Monitor
 }
     
   udp.begin(udpPort);
+  delay(1000);
+  pixels.clear();
+  pixels.setPixelColor(0, pixels.Color(0, 255, 0));
+  pixels.show();
 }
 
 void loop() {
