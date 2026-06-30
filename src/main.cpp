@@ -97,6 +97,7 @@ WiFiUDP udp;
 
 IPAddress local_IP(192, 168, 0, 5);
 IPAddress gateway(192, 168, 0, 1);
+IPAddress subnet(192, 168, 0, 255);
 
 const uint8_t PGM_PINS[4] = {12, 13, 25, 26}; 
 const uint8_t PVW_PINS[4] = {27, 32, 33, 34};
@@ -106,6 +107,7 @@ TallyPacket txPacket;
 void setup() {
   Serial.begin(115200);
   WiFi.begin(ssid, password);
+  WiFi.config(local_IP, gateway, subnet);
   while (WiFi.status() != WL_CONNECTED) { 
     delay(500); Serial.print("."); }
 
@@ -127,6 +129,57 @@ void loop() {
   udp.beginPacket("192.168.0.255", udpPort);
   udp.write((uint8_t*)&txPacket, sizeof(txPacket));
   udp.endPacket();
+}
+#endif
+
+// ====================================================================
+// --- TX CONFIGURATION ESP8266(UDP) ---
+// ====================================================================
+#ifdef MODE_TX_ESP8266UDP
+#include <ESP8266WiFi.h>
+#include <WiFiUdp.h>
+
+const char* ssid = "Rec.709"; 
+const char* password = "malammalam";
+const int udpPort = 8888;
+WiFiUDP udp;
+
+const uint8_t PGM_PINS[4] = {D1, D2, D3, D5}; 
+const uint8_t PVW_PINS[4] = {D6, D7, D8, RX}; 
+
+TallyPacket txPacket;
+
+void setup() {
+  Serial.begin(115200);
+  
+  // Konfigurasi IP Statis (Opsional tapi disarankan)
+  IPAddress local_IP(192, 168, 0, 5);
+  IPAddress gateway(192, 168, 0, 1);
+  IPAddress subnet(255, 255, 255, 0);
+  WiFi.config(local_IP, gateway, subnet);
+  
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) { delay(500); }
+
+  udp.begin(udpPort);
+
+  for (int i = 0; i < 4; i++) {
+      pinMode(PGM_PINS[i], INPUT_PULLUP);
+      pinMode(PVW_PINS[i], INPUT_PULLUP);
+  }
+}
+
+void loop() {
+  txPacket.pgm_mask = 0;
+  txPacket.pvw_mask = 0;
+  for(int i = 0; i < 4; i++) {
+    if (digitalRead(PGM_PINS[i]) == LOW) txPacket.pgm_mask |= (1 << i);
+    if (digitalRead(PVW_PINS[i]) == LOW) txPacket.pvw_mask |= (1 << i);
+  }
+  udp.beginPacket("192.168.0.255", udpPort);
+  udp.write((uint8_t*)&txPacket, sizeof(txPacket));
+  udp.endPacket();
+  delay(10);
 }
 #endif
 
@@ -339,7 +392,7 @@ void loop() {
 #define NUMPIXELS  1
 
 // Tentukan ID Tally ini (0, 1, 2, 3)
-const uint8_t CAM_ID = 1; 
+const uint8_t CAM_ID = 0; 
 
 TallyPacket rxPacket;
 
@@ -357,6 +410,8 @@ void setup() {
   Serial.begin(115200);
   pixels.begin();
   pixels.setBrightness(50);
+  pixels.clear();
+  pixels.show();
 
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
     
@@ -379,8 +434,81 @@ void loop() {
 
         // LOGIKA BITWISE YANG BENAR:
         // Gunakan operator '&' untuk men-masking bit spesifik
-        bool isPgm = (rxPacket.pgm_mask & (1 << (CAM_ID - 1)));
-        bool isPvw = (rxPacket.pvw_mask & (1 << (CAM_ID - 1)));
+        bool isPgm = (rxPacket.pgm_mask & (1 << (CAM_ID)));
+        bool isPvw = (rxPacket.pvw_mask & (1 << (CAM_ID)));
+
+        pixels.clear();
+
+        if (isPgm) {
+            pixels.setPixelColor(0, pixels.Color(255, 0, 0));
+            Serial.print("RED");
+        } else if (isPvw) {
+          Serial.print("GREEN");
+            pixels.setPixelColor(0, pixels.Color(0, 255, 0));
+        } else {
+          Serial.print("BLUE");
+            pixels.setPixelColor(0, pixels.Color(0, 0, 255));
+        }
+
+        pixels.show();
+    }
+}
+#endif
+
+// ====================================================================
+// --- RX CONFIGURATION ESP8266WS (UDP)---
+// ====================================================================
+#ifdef MODE_RX_ESP8266UDP_WS
+#include <ESP8266WiFi.h>
+#include <WiFiUdp.h>
+#include <Adafruit_NeoPixel.h>
+
+#define PIN        4 //D2
+#define NUMPIXELS  1
+
+// Tentukan ID Tally ini (0, 1, 2, 3)
+const uint8_t CAM_ID = 1; 
+
+TallyPacket rxPacket;
+
+const char* ssid = "Rec.709";
+const char* password = "malammalam";
+const int udpPort = 8888;
+WiFiUDP udp;
+
+volatile uint8_t pgm_mask = 0;
+volatile uint8_t pvw_mask = 0;
+
+Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
+
+void setup() {
+  Serial.begin(115200);
+  pixels.begin();
+  pixels.setBrightness(50);
+  pixels.clear();
+  pixels.show();
+    
+  WiFi.begin(ssid, password);
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nWiFi Connected!");
+    Serial.print("IP: ");
+    Serial.println(WiFi.localIP());
+  }
+    
+  udp.begin(udpPort);
+}
+
+void loop() {
+    int packetSize = udp.parsePacket();
+    if (packetSize == sizeof(TallyPacket)) {
+        TallyPacket rxPacket;
+        udp.read((unsigned char*)&rxPacket, sizeof(TallyPacket));
+
+        // LOGIKA BITWISE YANG BENAR:
+        // Gunakan operator '&' untuk men-masking bit spesifik
+        bool isPgm = (rxPacket.pgm_mask & (1 << (CAM_ID)));
+        bool isPvw = (rxPacket.pvw_mask & (1 << (CAM_ID)));
 
         pixels.clear();
 
