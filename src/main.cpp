@@ -378,8 +378,6 @@ void loop() {
 #ifdef MODE_RX_ESP32UDP_WS
 #include <WiFi.h>
 #include <WiFiUdp.h>
-#include "soc/soc.h"
-#include "soc/rtc_cntl_reg.h"
 #include <Adafruit_NeoPixel.h>
 
 #define PIN        4
@@ -392,7 +390,6 @@ TallyPacket rxPacket;
 
 const char* ssid = "Rec.709";
 const char* password = "malammalam";
-IPAddress groupIP(239, 1, 2, 3);
 WiFiUDP udp;
 
 volatile uint8_t pgm_mask = 0;
@@ -406,18 +403,14 @@ void setup() {
   pixels.setBrightness(50);
   pixels.clear();
   pixels.show();
-
-  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
     
   WiFi.begin(ssid, password);
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nWiFi Connected!");
-    Serial.print("IP: ");
-    Serial.println(WiFi.localIP());
+    pixels.setPixelColor(0, pixels.Color(0, 0, 100));
   }
     
-  udp.beginMulticast(groupIP, 4210);
+  udp.beginMulticast(IPAddress(239, 1, 2, 3), 4210);
 }
 
 void loop() {
