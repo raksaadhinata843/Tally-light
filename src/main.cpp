@@ -92,12 +92,7 @@ void loop() {
 // --- KONFIGURASI ---
 const char* ssid = "Rec.709"; 
 const char* password = "malammalam";
-const int udpPort = 8888;
 WiFiUDP udp;
-
-IPAddress local_IP(192, 168, 0, 4);
-IPAddress gateway(192, 168, 0, 1);
-IPAddress subnet(255, 255, 255, 0);
 
 const uint8_t PGM_PINS[4] = {12, 13, 25, 26}; 
 const uint8_t PVW_PINS[4] = {27, 32, 33, 34};
@@ -106,12 +101,11 @@ TallyPacket txPacket;
 
 void setup() {
   Serial.begin(115200);
-  WiFi.config(local_IP, gateway, subnet);
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) { 
     delay(500); Serial.print("."); }
 
-  udp.begin(udpPort);
+  udp.begin(4210);
 
   for (int i = 0; i < 4; i++) {
         pinMode(PGM_PINS[i], INPUT_PULLUP);
@@ -126,7 +120,7 @@ void loop() {
     if (digitalRead(PGM_PINS[i]) == LOW) txPacket.pgm_mask |= (1 << i);
     if (digitalRead(PVW_PINS[i]) == LOW) txPacket.pvw_mask |= (1 << i);
   }
-  udp.beginPacket("192.168.0.255", udpPort);
+  udp.beginPacket("239.1.2.3", 4210);
   udp.write((uint8_t*)&txPacket, sizeof(txPacket));
   udp.endPacket();
 }
@@ -328,7 +322,7 @@ TallyPacket rxPacket;
 
 const char* ssid = "Rec.709";
 const char* password = "malammalam";
-const int udpPort = 8888;
+const int udpPort = 55755;
 WiFiUDP udp;
 
 volatile uint8_t pgm_mask = 0;
@@ -398,7 +392,7 @@ TallyPacket rxPacket;
 
 const char* ssid = "Rec.709";
 const char* password = "malammalam";
-const int udpPort = 8888;
+IPAddress groupIP(239, 1, 2, 3);
 WiFiUDP udp;
 
 volatile uint8_t pgm_mask = 0;
@@ -423,7 +417,7 @@ void setup() {
     Serial.println(WiFi.localIP());
   }
     
-  udp.begin(udpPort);
+  udp.beginMulticast(groupIP, 4210);
 }
 
 void loop() {
@@ -473,7 +467,6 @@ TallyPacket rxPacket;
 
 const char* ssid = "Rec.709";
 const char* password = "malammalam";
-const int udpPort = 8888;
 WiFiUDP udp;
 
 volatile uint8_t pgm_mask = 0;
@@ -483,26 +476,19 @@ Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
 
 void setup() {
   Serial.begin(115200);
+  
   pixels.begin();
   pixels.setBrightness(50);
   pixels.clear();
   pixels.show();
-    
-  WiFi.begin(ssid, password);
 
+  WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
-  delay(2000);
-  pixels.clear();
-  pixels.setPixelColor(0, pixels.Color(0, 0, 255));
-  pixels.show();
-  Serial.print("."); // Kamu bakal lihat titik-titik di Serial Monitor
-}
-    
-  udp.begin(udpPort);
-  delay(1000);
-  pixels.clear();
-  pixels.setPixelColor(0, pixels.Color(0, 255, 0));
-  pixels.show();
+    Serial.print(".");
+    delay(500);
+  }
+
+  udp.beginMulticast(WiFi.localIP(), IPAddress(239, 1, 2, 3), 4210);
 }
 
 void loop() {
