@@ -378,9 +378,9 @@ void loop() {
 #ifdef MODE_RX_ESP32UDP_WS
 #include <WiFi.h>
 #include <WiFiUdp.h>
-#include <Adafruit_NeoPixel.h>
+#include <FastLED.h>
 
-#define PIN        4
+#define PIN        5
 #define NUMPIXELS  1
 
 // Tentukan ID Tally ini (0, 1, 2, 3)
@@ -395,19 +395,19 @@ WiFiUDP udp;
 volatile uint8_t pgm_mask = 0;
 volatile uint8_t pvw_mask = 0;
 
-Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
+CRGB leds[NUMPIXELS];
 
 void setup() {
   Serial.begin(115200);
-  pixels.begin();
-  pixels.setBrightness(50);
-  pixels.clear();
-  pixels.show();
+  FastLED.addLeds<WS2812, PIN, GRB>(leds, NUMPIXELS);
+  FastLED.setBrightness(50);
+  leds[0] = CRGB::Black;
+  FastLED.show();
     
   WiFi.begin(ssid, password);
 
   if (WiFi.status() == WL_CONNECTED) {
-    pixels.setPixelColor(0, pixels.Color(0, 0, 100));
+    leds[0] = CRGB::Blue;
   }
     
   udp.beginMulticast(IPAddress(239, 1, 2, 3), 4210);
@@ -424,20 +424,20 @@ void loop() {
         bool isPgm = (rxPacket.pgm_mask & (1 << (CAM_ID)));
         bool isPvw = (rxPacket.pvw_mask & (1 << (CAM_ID)));
 
-        pixels.clear();
+        leds[0] = CRGB::Black;
 
         if (isPgm) {
-            pixels.setPixelColor(0, pixels.Color(255, 0, 0));
+            leds[0] = CRGB::Red;
             Serial.print("RED");
         } else if (isPvw) {
           Serial.print("GREEN");
-            pixels.setPixelColor(0, pixels.Color(0, 255, 0));
+            leds[0] = CRGB::Green;
         } else {
           Serial.print("BLUE");
-            pixels.setPixelColor(0, pixels.Color(0, 0, 255));
+            leds[0] = CRGB::Blue;
         }
 
-        pixels.show();
+        FastLED.show();
     }
 }
 #endif
@@ -448,7 +448,7 @@ void loop() {
 #ifdef MODE_RX_ESP8266UDP_WS
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
-#include <Adafruit_NeoPixel.h>
+#include <FastLED.h>
 
 #define PIN        4 //D2
 #define NUMPIXELS  1
@@ -465,15 +465,15 @@ WiFiUDP udp;
 volatile uint8_t pgm_mask = 0;
 volatile uint8_t pvw_mask = 0;
 
-Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
+CRGB leds[NUMPIXELS];
 
 void setup() {
   Serial.begin(115200);
   
-  pixels.begin();
-  pixels.setBrightness(50);
-  pixels.clear();
-  pixels.show();
+  FastLED.addLeds<WS2812, PIN, GRB>(leds, NUMPIXELS);
+  FastLED.setBrightness(50);
+  leds[0] = CRGB::Black;
+  FastLED.show();
 
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
@@ -495,20 +495,20 @@ void loop() {
         bool isPgm = (rxPacket.pgm_mask & (1 << (CAM_ID)));
         bool isPvw = (rxPacket.pvw_mask & (1 << (CAM_ID)));
 
-        pixels.clear();
+        leds[0] = CRGB::Black;
 
         if (isPgm) {
-            pixels.setPixelColor(0, pixels.Color(255, 0, 0));
+            leds[0] = CRGB::Red;
             Serial.print("RED");
         } else if (isPvw) {
           Serial.print("GREEN");
-            pixels.setPixelColor(0, pixels.Color(0, 255, 0));
+            leds[0] = CRGB::Green;
         } else {
           Serial.print("BLUE");
-            pixels.setPixelColor(0, pixels.Color(0, 0, 255));
+            leds[0] = CRGB::Blue;
         }
 
-        pixels.show();
+        FastLED.show();
     }
 }
 #endif
@@ -519,9 +519,9 @@ void loop() {
 #ifdef MODE_RX_ESP8266_WS
 #include <ESP8266WiFi.h>
 #include <espnow.h>
-#include <Adafruit_NeoPixel.h>
+#include <FastLED.h>
 
-#define PIN        D4  
+#define PIN        5  
 #define NUMPIXELS  1
 
 // Tentukan ID Tally ini (Misal ID 1, ID 2, dst)
@@ -530,7 +530,7 @@ const uint8_t CAM_ID = 1;
 volatile uint8_t pgm_mask = 0;
 volatile uint8_t pvw_mask = 0;
 
-Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
+CRGB leds[NUMPIXELS];
 
 TallyPacket rxPacket;
 
@@ -541,9 +541,9 @@ void OnDataRecv(uint8_t *mac, uint8_t *data, uint8_t len) {
 }
 
 void setup() {
-    pixels.begin();
-    pixels.setBrightness(50);
-    
+    FastLED.addLeds<WS2812, PIN, GRB>(leds, NUMPIXELS);
+    FastLED.setBrightness(50);
+
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
     
