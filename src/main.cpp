@@ -104,6 +104,7 @@ void wifiConnect() {
   unsigned long startAttempt = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 10000) {
     delay(500);
+    WiFi.reconnect();
   }
   if (WiFi.status() == WL_CONNECTED) {
     udp.begin(4210);
