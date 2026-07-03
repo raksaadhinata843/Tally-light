@@ -397,17 +397,11 @@ void loop() {
 #define PIN        5
 #define NUMPIXELS  1
 
-// Tentukan ID Tally ini (0, 1, 2, 3)
-const uint8_t CAM_ID = 0; 
-
 TallyPacket rxPacket;
 
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
 WiFiUDP udp;
-
-volatile uint8_t pgm_mask = 0;
-volatile uint8_t pvw_mask = 0;
 
 CRGB leds[NUMPIXELS];
 
@@ -488,17 +482,11 @@ void loop() {
 #define PIN        4 //D2
 #define NUMPIXELS  1
 
-// Tentukan ID Tally ini (0, 1, 2, 3)
-const uint8_t CAM_ID = 1; 
-
 TallyPacket rxPacket;
 
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
 WiFiUDP udp;
-
-volatile uint8_t pgm_mask = 0;
-volatile uint8_t pvw_mask = 0;
 
 CRGB leds[NUMPIXELS];
 
