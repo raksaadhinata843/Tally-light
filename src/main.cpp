@@ -90,8 +90,8 @@ void loop() {
 #include <WiFiUdp.h>
 
 // --- KONFIGURASI ---
-const char* ssid = "Rec.709"; 
-const char* password = "malammalam";
+const char* ssid = WIFI_SSID;
+const char* password = WIFI_PASSWORD;
 WiFiUDP udp;
 
 const uint8_t PGM_PINS[4] = {12, 13, 25, 26}; 
@@ -334,8 +334,8 @@ const uint8_t CAM_ID = 1;
 
 TallyPacket rxPacket;
 
-const char* ssid = "Rec.709";
-const char* password = "malammalam";
+const char* ssid = WIFI_SSID;
+const char* password = WIFI_PASSWORD;
 const int udpPort = 55755;
 WiFiUDP udp;
 
@@ -402,8 +402,8 @@ const uint8_t CAM_ID = 0;
 
 TallyPacket rxPacket;
 
-const char* ssid = "Rec.709";
-const char* password = "malammalam";
+const char* ssid = WIFI_SSID;
+const char* password = WIFI_PASSWORD;
 WiFiUDP udp;
 
 volatile uint8_t pgm_mask = 0;
@@ -493,8 +493,8 @@ const uint8_t CAM_ID = 1;
 
 TallyPacket rxPacket;
 
-const char* ssid = "Tally_Light";
-const char* password = "malammalam";
+const char* ssid = WIFI_SSID;
+const char* password = WIFI_PASSWORD;
 WiFiUDP udp;
 
 volatile uint8_t pgm_mask = 0;
