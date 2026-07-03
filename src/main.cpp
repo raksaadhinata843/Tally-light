@@ -99,30 +99,51 @@ const uint8_t PVW_PINS[4] = {27, 32, 33, 34};
 
 TallyPacket txPacket;
 
+void wifiConnect() {
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting WiFi");
+  unsigned long startAttempt = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 10000) {
+    delay(500);
+    Serial.print(".");
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nWiFi connected: " + WiFi.localIP().toString());
+    udp.begin(4210);
+  } else {
+    Serial.println("\nWiFi connection timed out, will retry in loop.");
+  }
+}
+
 void setup() {
   Serial.begin(115200);
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) { 
-    delay(500); Serial.print("."); }
-
-  udp.begin(4210);
-
   for (int i = 0; i < 4; i++) {
-        pinMode(PGM_PINS[i], INPUT_PULLUP);
-        pinMode(PVW_PINS[i], INPUT_PULLUP);
-    }
+    pinMode(PGM_PINS[i], INPUT_PULLUP);
+    pinMode(PVW_PINS[i], INPUT_PULLUP);
+  }
+  wifiConnect();
 }
 
 void loop() {
+  // Reconnect jika WiFi putus
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi lost, reconnecting...");
+    wifiConnect();
+    return;
+  }
+
   txPacket.pgm_mask = 0;
   txPacket.pvw_mask = 0;
-  for(int i = 0; i < 4; i++) {
+  for (int i = 0; i < 4; i++) {
     if (digitalRead(PGM_PINS[i]) == LOW) txPacket.pgm_mask |= (1 << i);
     if (digitalRead(PVW_PINS[i]) == LOW) txPacket.pvw_mask |= (1 << i);
   }
+
   udp.beginPacket("239.1.2.3", 4210);
   udp.write((uint8_t*)&txPacket, sizeof(txPacket));
   udp.endPacket();
+
+  delay(50);
 }
 #endif
 
@@ -397,63 +418,78 @@ volatile uint8_t pvw_mask = 0;
 
 CRGB leds[NUMPIXELS];
 
-void setup() {
-  Serial.begin(115200);
-  FastLED.addLeds<WS2812, PIN, GRB>(leds, NUMPIXELS);
-  FastLED.setBrightness(50);
-  leds[0] = CRGB::Black;
-  FastLED.show();
-    
-  WiFi.begin(ssid, password);
-
-  if (WiFi.status() == WL_CONNECTED) {
-    leds[0] = CRGB::Blue;
-  }
-    
-  udp.beginMulticast(IPAddress(239, 1, 2, 3), 4210);
-}
-
 void recon() {
+  Serial.println("WiFi lost, reconnecting...");
   WiFi.reconnect();
+  // Blinking red saat mencoba reconnect
   while (WiFi.status() != WL_CONNECTED) {
     leds[0] = CRGB::Red;
     FastLED.show();
     delay(500);
     leds[0] = CRGB::Black;
     FastLED.show();
+    delay(500);
   }
+  Serial.println("WiFi reconnected: " + WiFi.localIP().toString());
+  // Re-join multicast group setelah reconnect
+  udp.beginMulticast(IPAddress(239, 1, 2, 3), 4210);
+}
+
+void setup() {
+  Serial.begin(115200);
+  FastLED.addLeds<WS2812, PIN, GRB>(leds, NUMPIXELS);
+  FastLED.setBrightness(50);
+  leds[0] = CRGB::Black;
+  FastLED.show();
+
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting WiFi");
+  // Tunggu sampai terhubung sebelum lanjut
+  while (WiFi.status() != WL_CONNECTED) {
+    leds[0] = CRGB::Red;
+    FastLED.show();
+    delay(500);
+    leds[0] = CRGB::Black;
+    FastLED.show();
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected: " + WiFi.localIP().toString());
+
+  // Indikator biru = siap menerima
+  leds[0] = CRGB::Blue;
+  FastLED.show();
+
   udp.beginMulticast(IPAddress(239, 1, 2, 3), 4210);
 }
 
 void loop() {
+  // FIX: cek koneksi dulu, reconnect jika putus
   if (WiFi.status() != WL_CONNECTED) {
-    int packetSize = udp.parsePacket();
-    if (packetSize == sizeof(TallyPacket)) {
-        TallyPacket rxPacket;
-        udp.read((unsigned char*)&rxPacket, sizeof(TallyPacket));
-
-        // LOGIKA BITWISE YANG BENAR:
-        // Gunakan operator '&' untuk men-masking bit spesifik
-        bool isPgm = (rxPacket.pgm_mask & (1 << (CAM_ID)));
-        bool isPvw = (rxPacket.pvw_mask & (1 << (CAM_ID)));
-
-        leds[0] = CRGB::Black;
-
-        if (isPgm) {
-            leds[0] = CRGB::Red;
-            Serial.print("RED");
-        } else if (isPvw) {
-          Serial.print("GREEN");
-            leds[0] = CRGB::Green;
-        } else {
-          Serial.print("BLUE");
-            leds[0] = CRGB::Blue;
-        }
-
-        FastLED.show();
-    }
-  } else {
     recon();
+    return;
+  }
+
+  int packetSize = udp.parsePacket();
+  if (packetSize == sizeof(TallyPacket)) {
+    TallyPacket rxPacket;
+    udp.read((unsigned char*)&rxPacket, sizeof(TallyPacket));
+
+    bool isPgm = (rxPacket.pgm_mask & (1 << CAM_ID));
+    bool isPvw = (rxPacket.pvw_mask & (1 << CAM_ID));
+
+    if (isPgm) {
+      leds[0] = CRGB::Red;
+      Serial.println("RED");
+    } else if (isPvw) {
+      leds[0] = CRGB::Green;
+      Serial.println("GREEN");
+    } else {
+      leds[0] = CRGB::Blue;
+      Serial.println("BLUE");
+    }
+
+    FastLED.show();
   }
 }
 #endif
