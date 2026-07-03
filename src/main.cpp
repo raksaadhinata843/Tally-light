@@ -101,22 +101,16 @@ TallyPacket txPacket;
 
 void wifiConnect() {
   WiFi.begin(ssid, password);
-  Serial.print("Connecting WiFi");
   unsigned long startAttempt = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 10000) {
     delay(500);
-    Serial.print(".");
   }
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nWiFi connected: " + WiFi.localIP().toString());
     udp.begin(4210);
-  } else {
-    Serial.println("\nWiFi connection timed out, will retry in loop.");
   }
 }
 
 void setup() {
-  Serial.begin(115200);
   for (int i = 0; i < 4; i++) {
     pinMode(PGM_PINS[i], INPUT_PULLUP);
     pinMode(PVW_PINS[i], INPUT_PULLUP);
@@ -127,7 +121,6 @@ void setup() {
 void loop() {
   // Reconnect jika WiFi putus
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi lost, reconnecting...");
     wifiConnect();
     return;
   }
@@ -419,9 +412,7 @@ volatile uint8_t pvw_mask = 0;
 CRGB leds[NUMPIXELS];
 
 void recon() {
-  Serial.println("WiFi lost, reconnecting...");
   WiFi.reconnect();
-  // Blinking red saat mencoba reconnect
   while (WiFi.status() != WL_CONNECTED) {
     leds[0] = CRGB::Red;
     FastLED.show();
@@ -430,20 +421,17 @@ void recon() {
     FastLED.show();
     delay(500);
   }
-  Serial.println("WiFi reconnected: " + WiFi.localIP().toString());
   // Re-join multicast group setelah reconnect
   udp.beginMulticast(IPAddress(239, 1, 2, 3), 4210);
 }
 
 void setup() {
-  Serial.begin(115200);
   FastLED.addLeds<WS2812, PIN, GRB>(leds, NUMPIXELS);
   FastLED.setBrightness(50);
   leds[0] = CRGB::Black;
   FastLED.show();
 
   WiFi.begin(ssid, password);
-  Serial.print("Connecting WiFi");
   // Tunggu sampai terhubung sebelum lanjut
   while (WiFi.status() != WL_CONNECTED) {
     leds[0] = CRGB::Red;
@@ -452,9 +440,7 @@ void setup() {
     leds[0] = CRGB::Black;
     FastLED.show();
     delay(500);
-    Serial.print(".");
   }
-  Serial.println("\nWiFi connected: " + WiFi.localIP().toString());
 
   // Indikator biru = siap menerima
   leds[0] = CRGB::Blue;
@@ -480,13 +466,10 @@ void loop() {
 
     if (isPgm) {
       leds[0] = CRGB::Red;
-      Serial.println("RED");
     } else if (isPvw) {
       leds[0] = CRGB::Green;
-      Serial.println("GREEN");
     } else {
       leds[0] = CRGB::Blue;
-      Serial.println("BLUE");
     }
 
     FastLED.show();
