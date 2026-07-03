@@ -503,8 +503,6 @@ volatile uint8_t pvw_mask = 0;
 CRGB leds[NUMPIXELS];
 
 void setup() {
-  Serial.begin(115200);
-  
   FastLED.addLeds<WS2812, PIN, GRB>(leds, NUMPIXELS);
   FastLED.setBrightness(50);
   leds[0] = CRGB::Black;
@@ -512,9 +510,17 @@ void setup() {
 
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
-    Serial.print(".");
+    leds[0] = CRGB::Red;
+    FastLED.show();
+    delay(500);
+    leds[0] = CRGB::Black;
+    FastLED.show();
     delay(500);
   }
+
+  // Indikator biru = siap menerima
+  leds[0] = CRGB::Blue;
+  FastLED.show();
 
   udp.beginMulticast(WiFi.localIP(), IPAddress(239, 1, 2, 3), 4210);
 }
@@ -527,39 +533,36 @@ void recon() {
     delay(500);
     leds[0] = CRGB::Black;
     FastLED.show();
+    delay(500);
   }
+  // Re-join multicast group setelah reconnect
   udp.beginMulticast(WiFi.localIP(), IPAddress(239, 1, 2, 3), 4210);
 }
 
 void loop() {
+  // Reconnect jika WiFi putus
   if (WiFi.status() != WL_CONNECTED) {
-    int packetSize = udp.parsePacket();
-    if (packetSize == sizeof(TallyPacket)) {
-        TallyPacket rxPacket;
-        udp.read((unsigned char*)&rxPacket, sizeof(TallyPacket));
-
-        // LOGIKA BITWISE YANG BENAR:
-        // Gunakan operator '&' untuk men-masking bit spesifik
-        bool isPgm = (rxPacket.pgm_mask & (1 << (CAM_ID)));
-        bool isPvw = (rxPacket.pvw_mask & (1 << (CAM_ID)));
-
-        leds[0] = CRGB::Black;
-
-        if (isPgm) {
-            leds[0] = CRGB::Red;
-            Serial.print("RED");
-        } else if (isPvw) {
-          Serial.print("GREEN");
-            leds[0] = CRGB::Green;
-        } else {
-          Serial.print("BLUE");
-            leds[0] = CRGB::Blue;
-        }
-
-        FastLED.show();
-    }
-  } else {
     recon();
+    return;
+  }
+
+  int packetSize = udp.parsePacket();
+  if (packetSize == sizeof(TallyPacket)) {
+    TallyPacket rxPacket;
+    udp.read((unsigned char*)&rxPacket, sizeof(TallyPacket));
+
+    bool isPgm = (rxPacket.pgm_mask & (1 << CAM_ID));
+    bool isPvw = (rxPacket.pvw_mask & (1 << CAM_ID));
+
+    if (isPgm) {
+      leds[0] = CRGB::Red;
+    } else if (isPvw) {
+      leds[0] = CRGB::Green;
+    } else {
+      leds[0] = CRGB::Blue;
+    }
+
+    FastLED.show();
   }
 }
 #endif
