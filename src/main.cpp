@@ -90,7 +90,7 @@ void loop() {
 #include <WiFiUdp.h>
 
 // --- KONFIGURASI ---
-const char* ssid = "Tally_Light"; 
+const char* ssid = "Rec.709"; 
 const char* password = "malammalam";
 WiFiUDP udp;
 
