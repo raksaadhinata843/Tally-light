@@ -436,6 +436,17 @@ void setup() {
     delay(500);
   }
 
+  // Flash putih sebanyak CAM_ID+1 kali agar ESP bisa dikenali
+  delay(500);
+  for (uint8_t i = 0; i <= CAM_ID; i++) {
+    leds[0] = CRGB::White;
+    FastLED.show();
+    delay(300);
+    leds[0] = CRGB::Black;
+    FastLED.show();
+    delay(300);
+  }
+
   // Indikator biru = siap menerima
   leds[0] = CRGB::Blue;
   FastLED.show();
@@ -504,6 +515,17 @@ void setup() {
     leds[0] = CRGB::Black;
     FastLED.show();
     delay(500);
+  }
+
+  // Flash putih sebanyak CAM_ID+1 kali agar ESP bisa dikenali
+  delay(500);
+  for (uint8_t i = 0; i <= CAM_ID; i++) {
+    leds[0] = CRGB::White;
+    FastLED.show();
+    delay(300);
+    leds[0] = CRGB::Black;
+    FastLED.show();
+    delay(300);
   }
 
   // Indikator biru = siap menerima
