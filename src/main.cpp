@@ -90,7 +90,7 @@ void loop() {
 #include <WiFiUdp.h>
 
 // --- KONFIGURASI ---
-const char* ssid = "Rec.709"; 
+const char* ssid = "Tally_Light"; 
 const char* password = "malammalam";
 WiFiUDP udp;
 
@@ -413,7 +413,20 @@ void setup() {
   udp.beginMulticast(IPAddress(239, 1, 2, 3), 4210);
 }
 
+void recon() {
+  WiFi.reconnect();
+  while (WiFi.status() != WL_CONNECTED) {
+    leds[0] = CRGB::Red;
+    FastLED.show();
+    delay(500);
+    leds[0] = CRGB::Black;
+    FastLED.show();
+  }
+  udp.beginMulticast(IPAddress(239, 1, 2, 3), 4210);
+}
+
 void loop() {
+  if (WiFi.status() != WL_CONNECTED) {
     int packetSize = udp.parsePacket();
     if (packetSize == sizeof(TallyPacket)) {
         TallyPacket rxPacket;
@@ -439,6 +452,9 @@ void loop() {
 
         FastLED.show();
     }
+  } else {
+    recon();
+  }
 }
 #endif
 
@@ -458,7 +474,7 @@ const uint8_t CAM_ID = 1;
 
 TallyPacket rxPacket;
 
-const char* ssid = "Rec.709";
+const char* ssid = "Tally_Light";
 const char* password = "malammalam";
 WiFiUDP udp;
 
@@ -484,7 +500,20 @@ void setup() {
   udp.beginMulticast(WiFi.localIP(), IPAddress(239, 1, 2, 3), 4210);
 }
 
+void recon() {
+  WiFi.reconnect();
+  while (WiFi.status() != WL_CONNECTED) {
+    leds[0] = CRGB::Red;
+    FastLED.show();
+    delay(500);
+    leds[0] = CRGB::Black;
+    FastLED.show();
+  }
+  udp.beginMulticast(WiFi.localIP(), IPAddress(239, 1, 2, 3), 4210);
+}
+
 void loop() {
+  if (WiFi.status() != WL_CONNECTED) {
     int packetSize = udp.parsePacket();
     if (packetSize == sizeof(TallyPacket)) {
         TallyPacket rxPacket;
@@ -510,6 +539,9 @@ void loop() {
 
         FastLED.show();
     }
+  } else {
+    recon();
+  }
 }
 #endif
 
