@@ -101,7 +101,10 @@ TallyPacket txPacket;
 
 void setup() {
   WiFi.begin(ssid, password);
-  udp.begin(IPAddress(239, 1, 2, 3), 4210);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+  }
+  udp.begin(4210);
   for (int i = 0; i < 4; i++) {
     pinMode(PGM_PINS[i], INPUT_PULLUP);
     pinMode(PVW_PINS[i], INPUT_PULLUP);
