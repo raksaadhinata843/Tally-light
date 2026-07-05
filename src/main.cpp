@@ -99,32 +99,16 @@ const uint8_t PVW_PINS[4] = {27, 32, 33, 34};
 
 TallyPacket txPacket;
 
-void wifiConnect() {
-  WiFi.begin(ssid, password);
-  unsigned long startAttempt = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 10000) {
-    delay(500);
-    WiFi.reconnect();
-  }
-  if (WiFi.status() == WL_CONNECTED) {
-    udp.begin(4210);
-  }
-}
-
 void setup() {
+  WiFi.begin(ssid, password);
+  udp.begin(IPAddress(239, 1, 2, 3), 4210);
   for (int i = 0; i < 4; i++) {
     pinMode(PGM_PINS[i], INPUT_PULLUP);
     pinMode(PVW_PINS[i], INPUT_PULLUP);
   }
-  wifiConnect();
 }
 
 void loop() {
-  // Reconnect jika WiFi putus
-  if (WiFi.status() != WL_CONNECTED) {
-    wifiConnect();
-    return;
-  }
 
   txPacket.pgm_mask = 0;
   txPacket.pvw_mask = 0;
@@ -185,7 +169,7 @@ void loop() {
     if (digitalRead(PGM_PINS[i]) == LOW) txPacket.pgm_mask |= (1 << i);
     if (digitalRead(PVW_PINS[i]) == LOW) txPacket.pvw_mask |= (1 << i);
   }
-  udp.beginPacket("192.168.0.255", udpPort);
+  udp.beginPacket(IPAddress(192, 168, 0, 255), udpPort);
   udp.write((uint8_t*)&txPacket, sizeof(txPacket));
   udp.endPacket();
   delay(10);
@@ -393,7 +377,7 @@ void loop() {
 #ifdef MODE_RX_ESP32UDP_WS
 #include <WiFi.h>
 #include <WiFiUdp.h>
-#include <FastLED.h>
+#include <Adafruit_NeoPixel.h>
 
 #define PIN        5
 #define NUMPIXELS  1
@@ -404,16 +388,16 @@ const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
 WiFiUDP udp;
 
-CRGB leds[NUMPIXELS];
+Adafruit_NeoPixel leds(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
 
 void recon() {
   WiFi.reconnect();
   while (WiFi.status() != WL_CONNECTED) {
-    leds[0] = CRGB::Red;
-    FastLED.show();
+    leds.setPixelColor(0, leds.Color(255, 0, 0));
+    leds.show();
     delay(500);
-    leds[0] = CRGB::Black;
-    FastLED.show();
+    leds.setPixelColor(0, leds.Color(0, 0, 0));
+    leds.show();
     delay(500);
   }
   // Re-join multicast group setelah reconnect
@@ -421,36 +405,35 @@ void recon() {
 }
 
 void setup() {
-  FastLED.addLeds<WS2812, PIN, GRB>(leds, NUMPIXELS);
-  FastLED.setBrightness(50);
-  leds[0] = CRGB::Black;
-  FastLED.show();
+  leds.setPixelColor(0, leds.Color(0, 0, 0));
+  leds.setBrightness(50);
+  leds.show();
 
   WiFi.begin(ssid, password);
   // Tunggu sampai terhubung sebelum lanjut
   while (WiFi.status() != WL_CONNECTED) {
-    leds[0] = CRGB::Red;
-    FastLED.show();
+    leds.setPixelColor(0, leds.Color(255, 0, 0));
+    leds.show();
     delay(500);
-    leds[0] = CRGB::Black;
-    FastLED.show();
+    leds.setPixelColor(0, leds.Color(0, 0, 0));
+    leds.show();
     delay(500);
   }
 
   // Flash putih sebanyak CAM_ID+1 kali agar ESP bisa dikenali
   delay(500);
   for (uint8_t i = 0; i <= CAM_ID; i++) {
-    leds[0] = CRGB::White;
-    FastLED.show();
+    leds.setPixelColor(0, leds.Color(255, 255, 255));
+    leds.show();
     delay(300);
-    leds[0] = CRGB::Black;
-    FastLED.show();
+    leds.setPixelColor(0, leds.Color(0, 0, 0));
+    leds.show();
     delay(300);
   }
 
   // Indikator biru = siap menerima
-  leds[0] = CRGB::Blue;
-  FastLED.show();
+  leds.setPixelColor(0, leds.Color(0, 0, 255));
+  leds.show();
 
   udp.beginMulticast(IPAddress(239, 1, 2, 3), 4210);
 }
@@ -471,14 +454,14 @@ void loop() {
     bool isPvw = (rxPacket.pvw_mask & (1 << CAM_ID));
 
     if (isPgm) {
-      leds[0] = CRGB::Red;
+      leds.setPixelColor(0, leds.Color(255, 0, 0));
     } else if (isPvw) {
-      leds[0] = CRGB::Green;
+      leds.setPixelColor(0, leds.Color(0, 255, 0));
     } else {
-      leds[0] = CRGB::Blue;
+      leds.setPixelColor(0, leds.Color(0, 0, 255));
     }
 
-    FastLED.show();
+    leds.show();
   }
 }
 #endif
