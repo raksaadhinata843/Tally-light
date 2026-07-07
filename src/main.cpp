@@ -387,6 +387,7 @@ void loop() {
 #ifdef MODE_RX_ESP32UDP_WS
 #include <WiFi.h>
 #include <WiFiUdp.h>
+#include <ArduinoOTA.h>
 #include <Adafruit_NeoPixel.h>
 
 #define PIN        5
@@ -403,7 +404,6 @@ Adafruit_NeoPixel leds(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
 void recon() {
   WiFi.reconnect();
   while (WiFi.status() != WL_CONNECTED) {
-    ArduinoOTA.handle();
     leds.setPixelColor(0, leds.Color(255, 0, 0));
     leds.show();
     delay(500);
@@ -416,8 +416,9 @@ void recon() {
 }
 
 void setup() {
-  leds.setPixelColor(0, leds.Color(0, 0, 0));
+  leds.begin();
   leds.setBrightness(50);
+  leds.setPixelColor(0, leds.Color(0, 0, 0));
   leds.show();
 
   WiFi.begin(ssid, password);
@@ -431,8 +432,7 @@ void setup() {
     delay(500);
   }
 
-  ArduinoOTA.setPort(3232);
-  ArduinoOTA.setHostname("Tally-ESP32");
+  ArduinoOTA.setHostname(("tally-cam" + String(CAM_ID)).c_str());
   ArduinoOTA.begin();
 
   // Flash putih sebanyak CAM_ID+1 kali agar ESP bisa dikenali
@@ -454,10 +454,9 @@ void setup() {
 }
 
 void loop() {
-  // FIX: cek koneksi dulu, reconnect jika putus
+  ArduinoOTA.handle();
   if (WiFi.status() != WL_CONNECTED) {
     recon();
-    ArduinoOTA.handle();
     return;
   }
 
@@ -488,7 +487,8 @@ void loop() {
 #ifdef MODE_RX_ESP8266UDP_WS
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
-#include <FastLED.h>
+#include <ArduinoOTA.h>
+#include <Adafruit_NeoPixel.h>
 
 #define PIN        4 //D2
 #define NUMPIXELS  1
@@ -499,58 +499,55 @@ const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
 WiFiUDP udp;
 
-CRGB leds[NUMPIXELS];
+Adafruit_NeoPixel leds(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
+
+void recon() {
+  WiFi.reconnect();
+  while (WiFi.status() != WL_CONNECTED) {
+    leds.setPixelColor(0, leds.Color(255, 0, 0));
+    leds.show();
+    delay(500);
+    leds.setPixelColor(0, leds.Color(0, 0, 0));
+    leds.show();
+    delay(500);
+  }
+  udp.beginMulticast(WiFi.localIP(), IPAddress(239, 1, 2, 3), 4210);
+}
 
 void setup() {
-  FastLED.addLeds<WS2812, PIN, GRB>(leds, NUMPIXELS);
-  FastLED.setBrightness(50);
-  leds[0] = CRGB::Black;
-  FastLED.show();
+  leds.begin();
+  leds.setBrightness(50);
+  leds.setPixelColor(0, leds.Color(0, 0, 0));
+  leds.show();
 
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
-    leds[0] = CRGB::Red;
-    FastLED.show();
+    leds.setPixelColor(0, leds.Color(255, 0, 0));
+    leds.show();
     delay(500);
-    leds[0] = CRGB::Black;
-    FastLED.show();
+    leds.setPixelColor(0, leds.Color(0, 0, 0));
+    leds.show();
     delay(500);
   }
 
-  ArduinoOTA.setPort(8266);
-  ArduinoOTA.setHostname("Tally-ESP32");
+  ArduinoOTA.setHostname(("tally-cam" + String(CAM_ID)).c_str());
   ArduinoOTA.begin();
 
   // Flash putih sebanyak CAM_ID+1 kali agar ESP bisa dikenali
   delay(500);
   for (uint8_t i = 0; i <= CAM_ID; i++) {
-    leds[0] = CRGB::White;
-    FastLED.show();
+    leds.setPixelColor(0, leds.Color(255, 255, 255));
+    leds.show();
     delay(300);
-    leds[0] = CRGB::Black;
-    FastLED.show();
+    leds.setPixelColor(0, leds.Color(0, 0, 0));
+    leds.show();
     delay(300);
   }
 
   // Indikator biru = siap menerima
-  leds[0] = CRGB::Blue;
-  FastLED.show();
+  leds.setPixelColor(0, leds.Color(0, 0, 255));
+  leds.show();
 
-  udp.beginMulticast(WiFi.localIP(), IPAddress(239, 1, 2, 3), 4210);
-}
-
-void recon() {
-  WiFi.reconnect();
-  while (WiFi.status() != WL_CONNECTED) {
-    ArduinoOTA.handle();
-    leds[0] = CRGB::Red;
-    FastLED.show();
-    delay(500);
-    leds[0] = CRGB::Black;
-    FastLED.show();
-    delay(500);
-  }
-  // Re-join multicast group setelah reconnect
   udp.beginMulticast(WiFi.localIP(), IPAddress(239, 1, 2, 3), 4210);
 }
 
@@ -571,14 +568,14 @@ void loop() {
     bool isPvw = (rxPacket.pvw_mask & (1 << CAM_ID));
 
     if (isPgm) {
-      leds[0] = CRGB::Red;
+      leds.setPixelColor(0, leds.Color(255, 0, 0));
     } else if (isPvw) {
-      leds[0] = CRGB::Green;
+      leds.setPixelColor(0, leds.Color(0, 255, 0));
     } else {
-      leds[0] = CRGB::Blue;
+      leds.setPixelColor(0, leds.Color(0, 0, 255));
     }
 
-    FastLED.show();
+    leds.show();
   }
 }
 #endif
