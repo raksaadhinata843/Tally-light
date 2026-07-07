@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <ArduinoOTA.h>
 
 // Deklarasi Tipe Data
 typedef struct __attribute__((packed)) {
@@ -105,6 +106,11 @@ void setup() {
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
   }
+
+  ArduinoOTA.setPort(3232);
+  ArduinoOTA.setHostname("Tally-ESP32");
+  ArduinoOTA.begin();
+  
   udp.begin(4210);
   for (int i = 0; i < 4; i++) {
     pinMode(PGM_PINS[i], INPUT_PULLUP);
@@ -113,7 +119,7 @@ void setup() {
 }
 
 void loop() {
-
+  ArduinoOTA.handle();
   txPacket.pgm_mask = 0;
   txPacket.pvw_mask = 0;
   for (int i = 0; i < 4; i++) {
@@ -397,6 +403,7 @@ Adafruit_NeoPixel leds(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
 void recon() {
   WiFi.reconnect();
   while (WiFi.status() != WL_CONNECTED) {
+    ArduinoOTA.handle();
     leds.setPixelColor(0, leds.Color(255, 0, 0));
     leds.show();
     delay(500);
@@ -424,6 +431,10 @@ void setup() {
     delay(500);
   }
 
+  ArduinoOTA.setPort(3232);
+  ArduinoOTA.setHostname("Tally-ESP32");
+  ArduinoOTA.begin();
+
   // Flash putih sebanyak CAM_ID+1 kali agar ESP bisa dikenali
   delay(500);
   for (uint8_t i = 0; i <= CAM_ID; i++) {
@@ -446,6 +457,7 @@ void loop() {
   // FIX: cek koneksi dulu, reconnect jika putus
   if (WiFi.status() != WL_CONNECTED) {
     recon();
+    ArduinoOTA.handle();
     return;
   }
 
@@ -505,6 +517,10 @@ void setup() {
     delay(500);
   }
 
+  ArduinoOTA.setPort(8266);
+  ArduinoOTA.setHostname("Tally-ESP32");
+  ArduinoOTA.begin();
+
   // Flash putih sebanyak CAM_ID+1 kali agar ESP bisa dikenali
   delay(500);
   for (uint8_t i = 0; i <= CAM_ID; i++) {
@@ -526,6 +542,7 @@ void setup() {
 void recon() {
   WiFi.reconnect();
   while (WiFi.status() != WL_CONNECTED) {
+    ArduinoOTA.handle();
     leds[0] = CRGB::Red;
     FastLED.show();
     delay(500);
@@ -538,6 +555,7 @@ void recon() {
 }
 
 void loop() {
+  ArduinoOTA.handle();
   // Reconnect jika WiFi putus
   if (WiFi.status() != WL_CONNECTED) {
     recon();
