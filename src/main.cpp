@@ -255,59 +255,90 @@ void loop() {
 // ====================================================================
 #ifdef MODE_RX_ESP32
 #include <WiFi.h>
-#include <esp_now.h>
+#include <ArduinoOTA.h>
+#include <Adafruit_NeoPixel.h>
 
-#define RED 18
-#define GREEN 19
-#define BLUE 21
-
-// Tentukan ID Tally ini (Misal ID 1, ID 2, dst)
-const uint8_t CAM_ID = 2; 
+#define PIN        5
+#define NUMPIXELS  1
 
 TallyPacket rxPacket;
 
-volatile uint8_t pgm_mask = 0;
-volatile uint8_t pvw_mask = 0;
+const char* ssid = WIFI_SSID;
+const char* password = WIFI_PASSWORD;
+const char* vmixIP = "192.168.1.100";
+const int vmixPort = 4210;
+WiFiClient client;
 
-void OnDataRecv(uint8_t *mac, uint8_t *data, uint8_t len) {
-    if (len == sizeof(TallyPacket)) {
-        memcpy(&rxPacket, data, sizeof(TallyPacket));
-    }
+Adafruit_NeoPixel leds(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
+
+void recon() {
+  WiFi.reconnect();
+  while (WiFi.status() != WL_CONNECTED) {
+    leds.setPixelColor(0, leds.Color(255, 0, 0));
+    leds.show();
+    delay(500);
+    leds.setPixelColor(0, leds.Color(0, 0, 0));
+    leds.show();
+    delay(500);
+  }
 }
 
 void setup() {
-    pinMode(RED, OUTPUT);
-    pinMode(GREEN, OUTPUT);
-    pinMode(BLUE, OUTPUT);
-    
-    WiFi.mode(WIFI_STA);
-    WiFi.disconnect();
-    
-    if (esp_now_init() != 0) return;
+  leds.begin();
+  leds.setBrightness(50);
+  leds.setPixelColor(0, leds.Color(0, 0, 0));
+  leds.show();
+
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    leds.setPixelColor(0, leds.Color(255, 0, 0));
+    leds.show();
+    delay(500);
+    leds.setPixelColor(0, leds.Color(0, 0, 0));
+    leds.show();
+    delay(500);
+  }
+
+  ArduinoOTA.setHostname(("tally-cam" + String(CAM_ID)).c_str());
+  ArduinoOTA.begin();
+
+  // Flash putih sebanyak CAM_ID+1 kali agar ESP bisa dikenali
+  delay(500);
+  for (uint8_t i = 0; i <= CAM_ID; i++) {
+    leds.setPixelColor(0, leds.Color(255, 255, 255));
+    leds.show();
+    delay(300);
+    leds.setPixelColor(0, leds.Color(0, 0, 0));
+    leds.show();
+    delay(300);
+  }
+
+  // Indikator biru = siap menerima
+  leds.setPixelColor(0, leds.Color(0, 0, 255));
+  leds.show();
 }
 
 void loop() {
-    // Gunakan Bitwise untuk cek apakah ID ini ada di dalam mask
-    // (1 << (CAM_ID - 1)) akan menghasilkan bit yang sesuai untuk ID tersebut
-    bool isPgm = (rxPacket.pgm_mask & (2 << (CAM_ID - 2)));
-    bool isPvw = (rxPacket.pvw_mask & (2 << (CAM_ID - 2)));
+  ArduinoOTA.handle();
 
-    if (isPgm) {
-        // Status PGM (Merah)
-        digitalWrite(RED, HIGH);
-        digitalWrite(GREEN, LOW);
-        digitalWrite(BLUE, LOW);
-    } else if (isPvw) {
-        // Status PVW (Hijau)
-        digitalWrite(RED, LOW);
-        digitalWrite(GREEN, HIGH);
-        digitalWrite(BLUE, LOW);
+  if (WiFi.status() != WL_CONNECTED) {
+    recon();
+    return;
+  }
+
+  if (client.available()) {
+    String data = client.readStringUntil('\n');
+
+    if (data.indexOf("PGM") != -1) {
+      leds.setPixelColor(0, leds.Color(255, 0, 0));
+    } else if (data.indexOf("PVW") != -1) {
+      leds.setPixelColor(0, leds.Color(0, 255, 0));
     } else {
-        // Status IDLE (Biru)
-        digitalWrite(RED, LOW);
-        digitalWrite(GREEN, LOW);
-        digitalWrite(BLUE, HIGH);
+      leds.setPixelColor(0, leds.Color(0, 0, 255));
     }
+
+    leds.show();
+  }
 }
 #endif
 
