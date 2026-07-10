@@ -911,3 +911,552 @@ void loop() {
   mesh.update();
 }
 #endif
+
+// ====================================================================
+// --- RX CONFIGURATION ESP32 ARBITER (Tally Arbiter over WebSocket) ---
+// ====================================================================
+#ifdef MODE_RX_ARBITER_ESP32
+#include <WiFi.h>
+#include <WiFiManager.h>
+#include <WebSocketsClient.h>
+#include <SocketIOclient.h>
+#include <Arduino_JSON.h>
+#include <Adafruit_NeoPixel.h>
+#include <ArduinoOTA.h>
+#include <Preferences.h>
+
+#define LED_PIN     5
+#define LED_COUNT   1
+#define BRIGHTNESS  50
+
+Adafruit_NeoPixel leds(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+
+#define ARB_WHITE leds.Color(255, 255, 255)
+#define ARB_BLACK leds.Color(0, 0, 0)
+
+String listenerDeviceName = "tally-arbiter";
+char tallyarbiter_host[40] = "192.168.1.2";
+char tallyarbiter_port[6]  = "4455";
+
+Preferences preferences;
+WiFiManager wm;
+SocketIOclient socket;
+
+JSONVar BusOptions;
+JSONVar Devices;
+JSONVar DeviceStates;
+String DeviceId = "unassigned";
+String DeviceName = "Unassigned";
+String prevType = "";
+String actualType = "";
+String actualColor = "";
+int actualPriority = 0;
+bool networkConnected = false;
+
+void setColor(uint32_t color) {
+  for (int i = 0; i < leds.numPixels(); i++) {
+    leds.setPixelColor(i, color);
+  }
+  leds.show();
+}
+
+String stripQuot(String str) {
+  if (str[0] == '"') str.remove(0, 1);
+  if (str.endsWith("\"")) str.remove(str.length() - 1, 1);
+  return str;
+}
+
+void wsEmit(String event, const char* payload = NULL) {
+  String msg = payload ? ("[\"" + event + "\"," + payload + "]") : ("[\"" + event + "\"]");
+  socket.sendEVENT(msg);
+}
+
+String getBusTypeById(String busId) {
+  for (int i = 0; i < BusOptions.length(); i++) {
+    if (JSON.stringify(BusOptions[i]["id"]) == busId) return JSON.stringify(BusOptions[i]["type"]);
+  }
+  return "invalid";
+}
+
+String getBusColorById(String busId) {
+  for (int i = 0; i < BusOptions.length(); i++) {
+    if (JSON.stringify(BusOptions[i]["id"]) == busId) return JSON.stringify(BusOptions[i]["color"]);
+  }
+  return "invalid";
+}
+
+int getBusPriorityById(String busId) {
+  for (int i = 0; i < BusOptions.length(); i++) {
+    if (JSON.stringify(BusOptions[i]["id"]) == busId) return JSON.stringify(BusOptions[i]["priority"]).toInt();
+  }
+  return 0;
+}
+
+void evaluateMode() {
+  if (actualType == prevType) return;
+  actualColor.replace("#", "");
+  long number = actualType != "" ? strtol(actualColor.c_str(), NULL, 16) : 0;
+  int r = (number >> 16) & 0xFF;
+  int g = (number >> 8) & 0xFF;
+  int b = number & 0xFF;
+  setColor(actualType != "" ? leds.Color(r, g, b) : ARB_BLACK);
+  prevType = actualType;
+}
+
+void setDeviceName() {
+  for (int i = 0; i < Devices.length(); i++) {
+    if (JSON.stringify(Devices[i]["id"]) == "\"" + DeviceId + "\"") {
+      String strDevice = JSON.stringify(Devices[i]["name"]);
+      DeviceName = strDevice.substring(1, strDevice.length() - 1);
+      break;
+    }
+  }
+  preferences.begin("tally-arbiter", false);
+  preferences.putString("devicename", DeviceName);
+  preferences.end();
+  evaluateMode();
+}
+
+void processTallyData() {
+  bool typeChanged = false;
+  for (int i = 0; i < DeviceStates.length(); i++) {
+    if (DeviceStates[i]["sources"].length() > 0) {
+      typeChanged = true;
+      actualType = getBusTypeById(JSON.stringify(DeviceStates[i]["busId"]));
+      actualColor = getBusColorById(JSON.stringify(DeviceStates[i]["busId"]));
+      actualPriority = getBusPriorityById(JSON.stringify(DeviceStates[i]["busId"]));
+    }
+  }
+  if (!typeChanged) {
+    actualType = "";
+    actualColor = "";
+    actualPriority = 0;
+  }
+  evaluateMode();
+}
+
+void socketFlash() {
+  leds.setBrightness(255);
+  for (int i = 0; i < 3; i++) {
+    setColor(ARB_WHITE);
+    delay(300);
+    setColor(ARB_BLACK);
+    delay(300);
+  }
+  leds.setBrightness(BRIGHTNESS);
+  evaluateMode();
+}
+
+void socketReassign(String payload) {
+  String oldDeviceId = payload.substring(0, payload.indexOf(','));
+  String newDeviceId = payload.substring(oldDeviceId.length() + 1);
+  newDeviceId = newDeviceId.substring(0, newDeviceId.indexOf(','));
+  oldDeviceId = stripQuot(oldDeviceId);
+  newDeviceId = stripQuot(newDeviceId);
+
+  String reassignObj = "{\"oldDeviceId\": \"" + oldDeviceId + "\", \"newDeviceId\": \"" + newDeviceId + "\"}";
+  wsEmit("listener_reassign_object", reassignObj.c_str());
+  wsEmit("devices");
+
+  setColor(ARB_WHITE);
+  delay(200);
+  setColor(ARB_BLACK);
+
+  DeviceId = newDeviceId;
+  preferences.begin("tally-arbiter", false);
+  preferences.putString("deviceid", newDeviceId);
+  preferences.end();
+  setDeviceName();
+}
+
+void socketConnected() {
+  String deviceObj = "{\"deviceId\": \"" + DeviceId + "\", \"listenerType\": \"" + listenerDeviceName + "\", \"canBeReassigned\": true, \"canBeFlashed\": true, \"supportsChat\": false }";
+  wsEmit("listenerclient_connect", deviceObj.c_str());
+}
+
+void socketEvent(socketIOmessageType_t type, uint8_t* payload, size_t length) {
+  switch (type) {
+    case sIOtype_CONNECT:
+      socketConnected();
+      break;
+    case sIOtype_EVENT: {
+      String msg = (char*)payload;
+      String evt = msg.substring(2, msg.indexOf("\"", 2));
+      String content = msg.substring(evt.length() + 4);
+      content.remove(content.length() - 1);
+
+      if (evt == "bus_options") BusOptions = JSON.parse(content);
+      if (evt == "reassign") socketReassign(content);
+      if (evt == "flash") socketFlash();
+      if (evt == "deviceId") {
+        DeviceId = content.substring(1, content.length() - 1);
+        setDeviceName();
+      }
+      if (evt == "devices") {
+        Devices = JSON.parse(content);
+        setDeviceName();
+      }
+      if (evt == "device_states") {
+        DeviceStates = JSON.parse(content);
+        processTallyData();
+      }
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+void saveParamCallback() {
+  String str_taHost = wm.server->hasArg("taHostIP") ? wm.server->arg("taHostIP") : "";
+  String str_taPort = wm.server->hasArg("taHostPort") ? wm.server->arg("taHostPort") : "";
+  preferences.begin("tally-arbiter", false);
+  preferences.putString("taHost", str_taHost);
+  preferences.putString("taPort", str_taPort);
+  preferences.end();
+}
+
+void connectToNetwork() {
+  WiFi.mode(WIFI_STA);
+
+  WiFiManagerParameter custom_taServer("taHostIP", "Tally Arbiter Server", tallyarbiter_host, 40);
+  WiFiManagerParameter custom_taPort("taHostPort", "Port", tallyarbiter_port, 6);
+  wm.addParameter(&custom_taServer);
+  wm.addParameter(&custom_taPort);
+  wm.setSaveParamsCallback(saveParamCallback);
+  wm.setConfigPortalTimeout(120);
+
+  networkConnected = wm.autoConnect(listenerDeviceName.c_str());
+}
+
+void connectToServer() {
+  socket.onEvent(socketEvent);
+  socket.begin(tallyarbiter_host, atoi(tallyarbiter_port));
+}
+
+void setup() {
+  leds.begin();
+  leds.setBrightness(BRIGHTNESS);
+  setColor(leds.Color(0, 0, 255));
+
+  uint64_t chipid = ESP.getEfuseMac();
+  listenerDeviceName = "tally-" + String((uint32_t)chipid, HEX);
+
+  preferences.begin("tally-arbiter", false);
+  if (preferences.getString("deviceid").length() > 0) DeviceId = preferences.getString("deviceid");
+  if (preferences.getString("devicename").length() > 0) DeviceName = preferences.getString("devicename");
+  if (preferences.getString("taHost").length() > 0) preferences.getString("taHost").toCharArray(tallyarbiter_host, 40);
+  if (preferences.getString("taPort").length() > 0) preferences.getString("taPort").toCharArray(tallyarbiter_port, 6);
+  preferences.end();
+
+  connectToNetwork();
+  while (!networkConnected) {
+    setColor(leds.Color(255, 0, 0));
+    delay(300);
+    setColor(ARB_BLACK);
+    delay(300);
+  }
+
+  ArduinoOTA.setHostname(listenerDeviceName.c_str());
+  ArduinoOTA.begin();
+
+  setColor(leds.Color(0, 255, 0));
+  delay(500);
+
+  connectToServer();
+}
+
+void loop() {
+  ArduinoOTA.handle();
+  socket.loop();
+}
+#endif
+
+// ====================================================================
+// --- RX CONFIGURATION ESP8266 ARBITER (Tally Arbiter over WebSocket) ---
+// ====================================================================
+#ifdef MODE_RX_ARBITER_ESP8266
+#include <ESP8266WiFi.h>
+#include <WiFiManager.h>
+#include <WebSocketsClient.h>
+#include <SocketIOclient.h>
+#include <Arduino_JSON.h>
+#include <Adafruit_NeoPixel.h>
+#include <ArduinoOTA.h>
+#include <EEPROM.h>
+
+#define LED_PIN     4 //D2
+#define LED_COUNT   1
+#define BRIGHTNESS  50
+
+#define EEPROM_SIZE      256
+#define ADDR_DEVICEID    0
+#define ADDR_DEVICENAME  40
+#define ADDR_TAHOST      80
+#define ADDR_TAPORT      120
+
+Adafruit_NeoPixel leds(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+
+#define ARB_WHITE leds.Color(255, 255, 255)
+#define ARB_BLACK leds.Color(0, 0, 0)
+
+String listenerDeviceName = "tally-arbiter";
+char tallyarbiter_host[40] = "192.168.1.2";
+char tallyarbiter_port[6]  = "4455";
+
+WiFiManager wm;
+SocketIOclient socket;
+WiFiEventHandler gotIpHandler, disconnectHandler;
+
+JSONVar BusOptions;
+JSONVar Devices;
+JSONVar DeviceStates;
+String DeviceId = "unassigned";
+String DeviceName = "Unassigned";
+String prevType = "";
+String actualType = "";
+String actualColor = "";
+int actualPriority = 0;
+bool networkConnected = false;
+
+void eepromWriteString(int addr, String data, int maxLen) {
+  int len = min((int)data.length(), maxLen - 1);
+  for (int i = 0; i < len; i++) EEPROM.write(addr + i, data[i]);
+  EEPROM.write(addr + len, 0);
+  EEPROM.commit();
+}
+
+String eepromReadString(int addr, int maxLen) {
+  char buf[maxLen];
+  int i = 0;
+  for (; i < maxLen - 1; i++) {
+    char c = EEPROM.read(addr + i);
+    if (c == 0 || c == 255) break;
+    buf[i] = c;
+  }
+  buf[i] = 0;
+  return String(buf);
+}
+
+void setColor(uint32_t color) {
+  for (int i = 0; i < leds.numPixels(); i++) {
+    leds.setPixelColor(i, color);
+  }
+  leds.show();
+}
+
+String stripQuot(String str) {
+  if (str[0] == '"') str.remove(0, 1);
+  if (str.endsWith("\"")) str.remove(str.length() - 1, 1);
+  return str;
+}
+
+void wsEmit(String event, const char* payload = NULL) {
+  String msg = payload ? ("[\"" + event + "\"," + payload + "]") : ("[\"" + event + "\"]");
+  socket.sendEVENT(msg);
+}
+
+String getBusTypeById(String busId) {
+  for (int i = 0; i < BusOptions.length(); i++) {
+    if (JSON.stringify(BusOptions[i]["id"]) == busId) return JSON.stringify(BusOptions[i]["type"]);
+  }
+  return "invalid";
+}
+
+String getBusColorById(String busId) {
+  for (int i = 0; i < BusOptions.length(); i++) {
+    if (JSON.stringify(BusOptions[i]["id"]) == busId) return JSON.stringify(BusOptions[i]["color"]);
+  }
+  return "invalid";
+}
+
+int getBusPriorityById(String busId) {
+  for (int i = 0; i < BusOptions.length(); i++) {
+    if (JSON.stringify(BusOptions[i]["id"]) == busId) return JSON.stringify(BusOptions[i]["priority"]).toInt();
+  }
+  return 0;
+}
+
+void evaluateMode() {
+  if (actualType == prevType) return;
+  actualColor.replace("#", "");
+  long number = actualType != "" ? strtol(actualColor.c_str(), NULL, 16) : 0;
+  int r = (number >> 16) & 0xFF;
+  int g = (number >> 8) & 0xFF;
+  int b = number & 0xFF;
+  setColor(actualType != "" ? leds.Color(r, g, b) : ARB_BLACK);
+  prevType = actualType;
+}
+
+void setDeviceName() {
+  for (int i = 0; i < Devices.length(); i++) {
+    if (JSON.stringify(Devices[i]["id"]) == "\"" + DeviceId + "\"") {
+      String strDevice = JSON.stringify(Devices[i]["name"]);
+      DeviceName = strDevice.substring(1, strDevice.length() - 1);
+      break;
+    }
+  }
+  eepromWriteString(ADDR_DEVICENAME, DeviceName, 40);
+  evaluateMode();
+}
+
+void processTallyData() {
+  bool typeChanged = false;
+  for (int i = 0; i < DeviceStates.length(); i++) {
+    if (DeviceStates[i]["sources"].length() > 0) {
+      typeChanged = true;
+      actualType = getBusTypeById(JSON.stringify(DeviceStates[i]["busId"]));
+      actualColor = getBusColorById(JSON.stringify(DeviceStates[i]["busId"]));
+      actualPriority = getBusPriorityById(JSON.stringify(DeviceStates[i]["busId"]));
+    }
+  }
+  if (!typeChanged) {
+    actualType = "";
+    actualColor = "";
+    actualPriority = 0;
+  }
+  evaluateMode();
+}
+
+void socketFlash() {
+  leds.setBrightness(255);
+  for (int i = 0; i < 3; i++) {
+    setColor(ARB_WHITE);
+    delay(300);
+    setColor(ARB_BLACK);
+    delay(300);
+  }
+  leds.setBrightness(BRIGHTNESS);
+  evaluateMode();
+}
+
+void socketReassign(String payload) {
+  String oldDeviceId = payload.substring(0, payload.indexOf(','));
+  String newDeviceId = payload.substring(oldDeviceId.length() + 1);
+  newDeviceId = newDeviceId.substring(0, newDeviceId.indexOf(','));
+  oldDeviceId = stripQuot(oldDeviceId);
+  newDeviceId = stripQuot(newDeviceId);
+
+  String reassignObj = "{\"oldDeviceId\": \"" + oldDeviceId + "\", \"newDeviceId\": \"" + newDeviceId + "\"}";
+  wsEmit("listener_reassign_object", reassignObj.c_str());
+  wsEmit("devices");
+
+  setColor(ARB_WHITE);
+  delay(200);
+  setColor(ARB_BLACK);
+
+  DeviceId = newDeviceId;
+  eepromWriteString(ADDR_DEVICEID, DeviceId, 40);
+  setDeviceName();
+}
+
+void socketConnected() {
+  String deviceObj = "{\"deviceId\": \"" + DeviceId + "\", \"listenerType\": \"" + listenerDeviceName + "\", \"canBeReassigned\": true, \"canBeFlashed\": true, \"supportsChat\": false }";
+  wsEmit("listenerclient_connect", deviceObj.c_str());
+}
+
+void socketEvent(socketIOmessageType_t type, uint8_t* payload, size_t length) {
+  switch (type) {
+    case sIOtype_CONNECT:
+      socketConnected();
+      break;
+    case sIOtype_EVENT: {
+      String msg = (char*)payload;
+      String evt = msg.substring(2, msg.indexOf("\"", 2));
+      String content = msg.substring(evt.length() + 4);
+      content.remove(content.length() - 1);
+
+      if (evt == "bus_options") BusOptions = JSON.parse(content);
+      if (evt == "reassign") socketReassign(content);
+      if (evt == "flash") socketFlash();
+      if (evt == "deviceId") {
+        DeviceId = content.substring(1, content.length() - 1);
+        setDeviceName();
+      }
+      if (evt == "devices") {
+        Devices = JSON.parse(content);
+        setDeviceName();
+      }
+      if (evt == "device_states") {
+        DeviceStates = JSON.parse(content);
+        processTallyData();
+      }
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+void saveParamCallback() {
+  String str_taHost = wm.server->hasArg("taHostIP") ? wm.server->arg("taHostIP") : "";
+  String str_taPort = wm.server->hasArg("taHostPort") ? wm.server->arg("taHostPort") : "";
+  eepromWriteString(ADDR_TAHOST, str_taHost, 40);
+  eepromWriteString(ADDR_TAPORT, str_taPort, 6);
+}
+
+void connectToNetwork() {
+  WiFi.mode(WIFI_STA);
+
+  gotIpHandler = WiFi.onStationModeGotIP([](const WiFiEventStationModeGotIP&) {
+    networkConnected = true;
+  });
+  disconnectHandler = WiFi.onStationModeDisconnected([](const WiFiEventStationModeDisconnected&) {
+    networkConnected = false;
+  });
+
+  WiFiManagerParameter custom_taServer("taHostIP", "Tally Arbiter Server", tallyarbiter_host, 40);
+  WiFiManagerParameter custom_taPort("taHostPort", "Port", tallyarbiter_port, 6);
+  wm.addParameter(&custom_taServer);
+  wm.addParameter(&custom_taPort);
+  wm.setSaveParamsCallback(saveParamCallback);
+  wm.setConfigPortalTimeout(120);
+
+  networkConnected = wm.autoConnect(listenerDeviceName.c_str());
+}
+
+void connectToServer() {
+  socket.onEvent(socketEvent);
+  socket.begin(tallyarbiter_host, atoi(tallyarbiter_port));
+}
+
+void setup() {
+  leds.begin();
+  leds.setBrightness(BRIGHTNESS);
+  setColor(leds.Color(0, 0, 255));
+
+  EEPROM.begin(EEPROM_SIZE);
+
+  listenerDeviceName = "tally-" + String(ESP.getChipId(), HEX);
+
+  String storedId = eepromReadString(ADDR_DEVICEID, 40);
+  String storedName = eepromReadString(ADDR_DEVICENAME, 40);
+  String storedHost = eepromReadString(ADDR_TAHOST, 40);
+  String storedPort = eepromReadString(ADDR_TAPORT, 6);
+  if (storedId.length() > 0) DeviceId = storedId;
+  if (storedName.length() > 0) DeviceName = storedName;
+  if (storedHost.length() > 0) storedHost.toCharArray(tallyarbiter_host, 40);
+  if (storedPort.length() > 0) storedPort.toCharArray(tallyarbiter_port, 6);
+
+  connectToNetwork();
+  while (!networkConnected) {
+    setColor(leds.Color(255, 0, 0));
+    delay(300);
+    setColor(ARB_BLACK);
+    delay(300);
+  }
+
+  ArduinoOTA.setHostname(listenerDeviceName.c_str());
+  ArduinoOTA.begin();
+
+  setColor(leds.Color(0, 255, 0));
+  delay(500);
+
+  connectToServer();
+}
+
+void loop() {
+  ArduinoOTA.handle();
+  socket.loop();
+}
+#endif

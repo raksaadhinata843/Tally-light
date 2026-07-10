@@ -1,0 +1,1 @@
+- [Tally-light firmware conventions](tally-light-conventions.md) — WS2812B RX modes, OTA, and Tally Arbiter mode design decisions.
