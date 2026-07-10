@@ -265,8 +265,8 @@ TallyPacket rxPacket;
 
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
-const char* vmixIP = "192.168.1.100";
-const int vmixPort = 4210;
+const char* vmixIP = "192.168.0.100";
+const int vmixPort = 58088;
 WiFiClient client;
 
 Adafruit_NeoPixel leds(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
@@ -328,14 +328,21 @@ void loop() {
 
   if (client.available()) {
     String data = client.readStringUntil('\n');
+    data.trim(); // Hapus spasi dan karakter newline
 
-    if (data.indexOf("PGM") != -1) {
+    if (data.startsWith("TALLY OK")) {
+      if (data.length() > 8) {
+        char state = data.charAt(8);
+
+    if (state == '1') {
       leds.setPixelColor(0, leds.Color(255, 0, 0));
-    } else if (data.indexOf("PVW") != -1) {
+    } else if (state == '2') {
       leds.setPixelColor(0, leds.Color(0, 255, 0));
     } else {
       leds.setPixelColor(0, leds.Color(0, 0, 255));
     }
+  }
+}
 
     leds.show();
   }
