@@ -22,3 +22,10 @@ A second, independent RX mode added alongside the vMix UDP modes (not a replacem
 - WiFi + Tally Arbiter server IP/port are configured via WiFiManager captive portal at first boot, not via secrets.ini/build flags — this mode is meant to be flashed once and reconfigured entirely over WiFi/OTA afterward.
 - Device identity (deviceId/deviceName/taHost/taPort) persistence: ESP32 uses `Preferences`; ESP8266 has no `Preferences` library, so a small EEPROM-backed key/value helper (fixed-offset string slots) was written instead. Any future device settings added to this mode need a new fixed EEPROM offset for ESP8266.
 - Libraries: `tzapu/WiFiManager`, `links2004/WebSockets` (provides both `WebSocketsClient.h` and `SocketIOclient.h`), `arduino-libraries/Arduino_JSON`, `adafruit/Adafruit NeoPixel`.
+
+## Tally Hub mode (MODE_RX_TALLYHUB_ESP32)
+Ported from a much larger reference project (ESP32-S3 + TFT screen + QR code, talking UDP to a "Tally Hub" server). User only has ESP32 + WS2812B, so the TFT/QR display layer was swapped for a NeoPixel LED while every other layer (WiFiManager captive portal, built-in web config server with `/save /assign /unassign /sources /status /reset /restart`, UDP register/heartbeat/reconnect protocol, admin_message, assignment confirmation, `Preferences` persistence) was kept byte-for-byte in behavior.
+
+**Why:** when a user says "only replace the hardware", the correct move is a mechanical 1:1 port — keep every non-display function/variable/protocol message identical, and replace only the rendering calls (`tft.*`, `qrcode`) with an equivalent LED status function. Don't redesign the protocol or trim features to save effort.
+
+**How to apply:** if asked to port another reference project onto this hardware (or extend this mode), reuse the LED status mapping already implemented: solid red=PROGRAM, solid orange=PREVIEW, dim gray=IDLE/UNASSIGNED, blinking red=NO_WIFI/HUB_LOST, blinking blue=connecting, solid green/red blink=assignment confirmed/cleared. Admin messages (which were free-text on the TFT) become a blinking custom-color LED since there's no way to render text on a single/few-LED strip.
