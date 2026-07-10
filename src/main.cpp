@@ -266,7 +266,7 @@ TallyPacket rxPacket;
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
 const char* vmixIP = "192.168.0.100";
-const int vmixPort = 58088;
+const int vmixPort = 8099;
 WiFiClient client;
 
 Adafruit_NeoPixel leds(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
@@ -873,8 +873,8 @@ Adafruit_NeoPixel leds(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 #define ARB_WHITE leds.Color(255, 255, 255)
 #define ARB_BLACK leds.Color(0, 0, 0)
 
-String listenerDeviceName = "tally-arbiter";
-char tallyarbiter_host[40] = "192.168.1.2";
+String listenerDeviceName = "esp32_tally";
+char tallyarbiter_host[40] = "192.168.0.100";
 char tallyarbiter_port[6]  = "4455";
 
 Preferences preferences;
@@ -884,8 +884,8 @@ SocketIOclient socket;
 JSONVar BusOptions;
 JSONVar Devices;
 JSONVar DeviceStates;
-String DeviceId = "unassigned";
-String DeviceName = "Unassigned";
+String DeviceId = "d6fb433c";
+String DeviceName = "esp32_tally";
 String prevType = "";
 String actualType = "";
 String actualColor = "";
