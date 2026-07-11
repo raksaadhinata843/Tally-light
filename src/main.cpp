@@ -1164,8 +1164,8 @@ String deviceName = "ESP32 Tally Light";
 String deviceID = "tally-";
 String macAddress = "";
 String ipAddress = "";
-String hubIP = "192.168.0.216";
-int hubPort = 7411;
+String hubIP = "192.168.0.1";
+int hubPort = 3000;
 String assignedSource = "";
 String assignedSourceName = "";
 String currentSource = "";
@@ -1276,8 +1276,8 @@ void setup() {
     setupWebServer();
     ArduinoOTA.setHostname(deviceID.c_str());
     ArduinoOTA.begin();
-    if (udp.begin(7411)) {
-      Serial.println("UDP started on port 7411");
+    if (udp.begin(3000)) {
+      Serial.println("UDP started on port 3000");
     } else {
       Serial.println("Failed to start UDP");
     }
@@ -1502,8 +1502,6 @@ void setupWiFi() {
   });
 
   String apName = "TallyLight-" + deviceID.substring(6, 12);
-  wifiManager.setConnectTimeout(30);
-  wifiManager.setConfigPortalTimeout(300);
   wifiManager.setBreakAfterConfig(true);
   bool connected = wifiManager.autoConnect(apName.c_str());
   if (!connected) {
@@ -1534,8 +1532,8 @@ void setupWebServer() {
 void loadConfiguration() {
   preferences.begin("tally", false);
   deviceName = preferences.getString("deviceName", "ESP32 Tally Light");
-  hubIP = preferences.getString("hubIP", "192.168.0.216");
-  hubPort = preferences.getInt("hubPort", 7411);
+  hubIP = preferences.getString("hubIP");
+  hubPort = preferences.getInt("hubPort");
   assignedSource = preferences.getString("assignedSource", "");
   assignedSourceName = preferences.getString("assignedSourceName", "");
   customDisplayName = preferences.getString("customDisplayName", "");
