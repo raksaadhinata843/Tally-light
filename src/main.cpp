@@ -1302,15 +1302,9 @@ void loop()
 #define DEVICE_MODEL "ESP32-WS2812B"
 
 // ---- LED hardware config (edit to match your wiring) ----
-#ifndef LED_PIN
 #define LED_PIN 5
-#endif
-#ifndef LED_COUNT
 #define LED_COUNT 1
-#endif
-#ifndef LED_BRIGHTNESS
 #define LED_BRIGHTNESS 80
-#endif
 #define BOOT_BUTTON_PIN 0
 
 Adafruit_NeoPixel leds(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
@@ -1320,8 +1314,6 @@ Adafruit_NeoPixel leds(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 #define TH_GREEN leds.Color(0, 255, 0)
 #define TH_BLUE leds.Color(0, 0, 255)
 #define TH_YELLOW leds.Color(255, 200, 0)
-#define TH_ORANGE leds.Color(255, 100, 0)
-#define TH_GRAY leds.Color(30, 30, 30)
 
 WebServer server(80);
 WiFiUDP udp;
@@ -2047,7 +2039,6 @@ void handleUDPMessages()
   }
 }
 
-// Replaces the TFT updateDisplay(): drives the WS2812B LED(s) instead of a screen.
 void updateLED()
 {
   if (adminMessageActive && millis() > adminMessageExpire)
@@ -2115,7 +2106,7 @@ void updateLED()
 
   if (!isAssigned)
   {
-    setLedColor(TH_GRAY);
+    setLedColor(TH_WHITE);
     return;
   }
 
