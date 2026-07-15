@@ -8,6 +8,12 @@ typedef struct __attribute__((packed))
   uint8_t pvw_mask;
 } TallyPacket;
 
+namespace tallyhub
+{
+void setupTallyHubMode();
+void loopTallyHubMode();
+}
+
 // ====================================================================
 // --- TX CONFIGURATION ESP32(UDP) ---
 // ====================================================================
@@ -138,8 +144,20 @@ void loop()
 
 #define PIN 5
 #define NUMPIXELS 1
+#ifndef MODE_SELECT_PIN
+#define MODE_SELECT_PIN 4
+#endif
 
 TallyPacket rxPacket;
+
+enum RuntimeMode
+{
+  RUNMODE_UDP = 0,
+  RUNMODE_TALLYHUB = 1
+};
+
+RuntimeMode currentMode = RUNMODE_UDP;
+bool modeInitialized = false;
 
 const char *ssid = WIFI_SSID;
 const char *password = WIFI_PASSWORD;
@@ -162,7 +180,13 @@ void recon()
   udp.beginMulticast(IPAddress(239, 1, 2, 3), 4210);
 }
 
-void setup()
+bool readModeSelectPin()
+{
+  pinMode(MODE_SELECT_PIN, INPUT_PULLUP);
+  return digitalRead(MODE_SELECT_PIN) == HIGH;
+}
+
+void setupUdpMode()
 {
   leds.begin();
   leds.setBrightness(50);
@@ -202,39 +226,76 @@ void setup()
   udp.beginMulticast(IPAddress(239, 1, 2, 3), 4210);
 }
 
+void switchToMode(RuntimeMode newMode)
+{
+  if (currentMode == newMode && modeInitialized)
+    return;
+
+  currentMode = newMode;
+  modeInitialized = true;
+
+  if (newMode == RUNMODE_UDP)
+  {
+    setupUdpMode();
+  }
+  else
+  {
+    tallyhub::setupTallyHubMode();
+  }
+}
+
+void setup()
+{
+  switchToMode(readModeSelectPin() ? RUNMODE_UDP : RUNMODE_TALLYHUB);
+}
+
 void loop()
 {
-  ArduinoOTA.handle();
-
-  if (WiFi.status() != WL_CONNECTED)
+  RuntimeMode requestedMode = readModeSelectPin() ? RUNMODE_UDP : RUNMODE_TALLYHUB;
+  if (requestedMode != currentMode || !modeInitialized)
   {
-    recon();
+    switchToMode(requestedMode);
     return;
   }
 
-  int packetSize = udp.parsePacket();
-  if (packetSize == sizeof(TallyPacket))
+  if (currentMode == RUNMODE_UDP)
   {
-    TallyPacket rxPacket;
-    udp.read((unsigned char *)&rxPacket, sizeof(TallyPacket));
+    ArduinoOTA.handle();
 
-    bool isPgm = (rxPacket.pgm_mask & (1 << CAM_ID));
-    bool isPvw = (rxPacket.pvw_mask & (1 << CAM_ID));
-
-    if (isPgm)
+    if (WiFi.status() != WL_CONNECTED)
     {
-      leds.setPixelColor(0, leds.Color(255, 0, 0));
-    }
-    else if (isPvw)
-    {
-      leds.setPixelColor(0, leds.Color(0, 255, 0));
-    }
-    else
-    {
-      leds.setPixelColor(0, leds.Color(0, 0, 255));
+      recon();
+      return;
     }
 
-    leds.show();
+    int packetSize = udp.parsePacket();
+    if (packetSize == sizeof(TallyPacket))
+    {
+      TallyPacket rxPacket;
+      udp.read((unsigned char *)&rxPacket, sizeof(TallyPacket));
+
+      bool isPgm = (rxPacket.pgm_mask & (1 << CAM_ID));
+      bool isPvw = (rxPacket.pvw_mask & (1 << CAM_ID));
+
+      if (isPgm)
+      {
+        leds.setPixelColor(0, leds.Color(255, 0, 0));
+      }
+      else if (isPvw)
+      {
+        leds.setPixelColor(0, leds.Color(0, 255, 0));
+      }
+      else
+      {
+        leds.setPixelColor(0, leds.Color(0, 0, 255));
+      }
+
+      leds.show();
+    }
+  }
+  else
+  {
+    tallyhub::loopTallyHubMode();
   }
 }
 #endif
@@ -862,7 +923,7 @@ void loop()
 // server, UDP registration/heartbeat/reconnect protocol, admin messages,
 // assignment confirmation, JSON message handling) is preserved unchanged.
 // ============================================================================
-#ifdef MODE_RX_TALLYHUB_ESP32
+#if defined(MODE_RX_TALLYHUB_ESP32) || defined(MODE_RX_ESP32UDP_WS)
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <WebServer.h>
@@ -872,6 +933,8 @@ void loop()
 #include <WiFiManager.h>
 #include <ArduinoOTA.h>
 #include <Adafruit_NeoPixel.h>
+
+namespace tallyhub {
 
 #define FIRMWARE_VERSION "1.0.1"
 #define DEVICE_MODEL "ESP32-WS2812B"
@@ -987,7 +1050,7 @@ void setLedColor(uint32_t color)
   leds.show();
 }
 
-void setup()
+void setupTallyHubMode()
 {
   Serial.begin(115200);
   delay(1000);
