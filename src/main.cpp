@@ -79,32 +79,31 @@ void loop()
 #ifdef MODE_TX_ESP8266UDP
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
+#include <ArduinoOTA.h>
 
-const char *ssid = "Rec.709";
-const char *password = "malammalam";
+const char *ssid = WIFI_SSID;
+const char *password = WIFI_PASSWORD;
 const int udpPort = 8888;
 WiFiUDP udp;
 
-const uint8_t PGM_PINS[4] = {D1, D2, D3, D5};
-const uint8_t PVW_PINS[4] = {D6, D7, D8, RX};
+// PGM: D0 (GPIO16), D1 (GPIO5), D2 (GPIO4), D3 (GPIO0)
+const uint8_t PGM_PINS[4] = {16, 5, 4, 0}; 
+// PVW: D5 (GPIO14), D6 (GPIO12), D7 (GPIO13), D8 (GPIO15)
+const uint8_t PVW_PINS[4] = {14, 12, 13, 15};
 
 TallyPacket txPacket;
 
 void setup()
 {
-  Serial.begin(115200);
-
-  // Konfigurasi IP Statis (Opsional tapi disarankan)
-  IPAddress local_IP(192, 168, 0, 5);
-  IPAddress gateway(192, 168, 0, 1);
-  IPAddress subnet(255, 255, 255, 0);
-  WiFi.config(local_IP, gateway, subnet);
-
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED)
   {
     delay(500);
   }
+
+  ArduinoOTA.setPort(8266);
+  ArduinoOTA.setHostname("Tally-ESP8266");
+  ArduinoOTA.begin();
 
   udp.begin(udpPort);
 
@@ -117,6 +116,7 @@ void setup()
 
 void loop()
 {
+  ArduinoOTA.handle();
   txPacket.pgm_mask = 0;
   txPacket.pvw_mask = 0;
   for (int i = 0; i < 4; i++)
