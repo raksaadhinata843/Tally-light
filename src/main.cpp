@@ -87,7 +87,7 @@ const int udpPort = 4210;
 WiFiUDP udp;
 
 // PGM: D0 (GPIO16), D1 (GPIO5), D2 (GPIO4), D3 (GPIO0)
-const uint8_t PGM_PINS[4] = {16, 5, 4, 0}; 
+const uint8_t PGM_PINS[4] = {4, 5, 16, 0}; 
 // PVW: D5 (GPIO14), D6 (GPIO12), D7 (GPIO13), D8 (GPIO15)
 const uint8_t PVW_PINS[4] = {14, 12, 13, 15};
 
