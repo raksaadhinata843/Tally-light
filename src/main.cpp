@@ -87,9 +87,9 @@ const int udpPort = 4210;
 WiFiUDP udp;
 
 // PGM: D0 (GPIO16), D1 (GPIO5), D2 (GPIO4), D3 (GPIO0)
-const uint8_t PGM_PINS[4] = {5, 4, 0, 16}; 
+const uint8_t PGM_PINS[4] = {16, 5, 4, 0}; 
 // PVW: D5 (GPIO14), D6 (GPIO12), D7 (GPIO13), D8 (GPIO15)
-const uint8_t PVW_PINS[4] = {12, 13, 15, 14};
+const uint8_t PVW_PINS[4] = {14, 12, 13, 15};
 
 TallyPacket txPacket;
 
@@ -126,7 +126,7 @@ void loop()
     if (digitalRead(PVW_PINS[i]) == LOW)
       txPacket.pvw_mask |= (1 << i);
   }
-  udp.beginPacket(IPAddress(239, 1, 2, 3), udpPort);
+  udp.beginPacket(IPAddress(255, 255, 255, 255), udpPort);
   udp.write((uint8_t *)&txPacket, sizeof(txPacket));
   udp.endPacket();
   delay(10);
